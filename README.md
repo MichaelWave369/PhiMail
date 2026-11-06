@@ -32,6 +32,10 @@ Use `npm run bridge:dev` and `npm run dev` in separate terminals after configuri
 
 Use **Field Connections** in the sidebar to inspect a synthetic PhiID identity export (display-only) and, when developing locally, read the PhiCloud R0 declared service inventory. Neither action authenticates an account or establishes service health. Read the [integration guide](docs/INTEGRATION_R1.md) for setup and security boundaries.
 
+## R2: Independent local PhiID OIDC login
+
+The development-only Field Connections panel can sign into the **same local Keycloak realm** used by PhiID, using PhiMail's own audited OAuth Authorization Code + PKCE session. This is a real verified **localhost test identity**, but not cloud authorization, Gmail linking or hosted SSO. See [R2 local identity setup](docs/LOCAL_PHIID_R2.md). No login is provided on GitHub Pages.
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

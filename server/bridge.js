@@ -7,6 +7,7 @@
  */
 import { createServer } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createPhiIdLab } from './phiid-lab.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -77,7 +78,7 @@ function gmailSummary(record, email) {
 /**
  * Inject fetch for isolated OAuth/Gmail test doubles. No external requests in unit tests.
  */
-export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
+export function createBridge({ env = process.env, fetchImpl = fetch, identityProvider = null } = {}) {
   const configuredOrigin = env.BRIDGE_PUBLIC_ORIGIN || 'http://localhost:5173';
   const frontendOrigin = new URL(configuredOrigin);
   if (frontendOrigin.pathname !== '/' || frontendOrigin.search || frontendOrigin.hash) throw new Error('BRIDGE_PUBLIC_ORIGIN must be an origin only');
@@ -90,6 +91,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
   const clientId = env.GOOGLE_CLIENT_ID || '';
   const clientSecret = env.GOOGLE_CLIENT_SECRET || '';
   const ready = Boolean(clientId && clientSecret);
+  const phiidLab = createPhiIdLab({env,provider:identityProvider});
   const oauthPending = new Map();
   const sessions = new Map();
   const startLimits = new Map();
@@ -146,6 +148,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
     res.setHeader('Cache-Control','no-store');
     const url = new URL(req.url || '/', origin);
     const path = url.pathname;
+    if (await phiidLab.handle(req,res,path,url)) return;
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
       mode: 'experimental-readonly', sameOriginRequired: true,
