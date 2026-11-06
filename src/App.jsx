@@ -44,7 +44,7 @@ export default function App(){
   const [draft,setDraft]=useState(BLANK);
   const [dialog,setDialog]=useState('');
   const [bridgeOpen,setBridgeOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phimail'));
-  const [fieldConnectionsOpen,setFieldConnectionsOpen]=useState(false);
+  const [fieldConnectionsOpen,setFieldConnectionsOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phiid'));
   const [toast,setToast]=useState('');
   const [mobileMenu,setMobileMenu]=useState(false);
   const [mobileReader,setMobileReader]=useState(false);

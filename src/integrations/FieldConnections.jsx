@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Cloud, FileUp, Fingerprint, Info, Layers3, LockKeyhole, RefreshCw, ShieldAlert, X } from 'lucide-react';
 import { inspectPhiIdPreviewExport, readLocalPhiCloudRegistry } from './contracts.js';
 import './connections.css';
+import LocalPhiIdCard from './LocalPhiIdCard.jsx';
 
 export default function FieldConnections({onClose}) {
   const [account,setAccount]=useState(null);
@@ -36,6 +37,7 @@ export default function FieldConnections({onClose}) {
     <section className="field-window" role="dialog" aria-modal="true" aria-labelledby="field-heading">
       <header className="field-head"><span className="field-brand"><Layers3 size={22}/></span><div><small>Φ ECOSYSTEM · R1</small><h2 id="field-heading">Field Connections</h2></div><span className="field-label">CONTRACT PREVIEW</span><button aria-label="Close Field Connections" onClick={onClose}><X size={20}/></button></header>
       <div className="field-warning"><Info size={17}/><span>Read-only integration preview. <b>Nothing here signs in a user, connects a real account, confirms service health or grants permissions.</b></span></div>
+      {import.meta.env.DEV&&<LocalPhiIdCard/>}
       <div className="field-columns">
         <section className="field-card">
           <div className="field-card-head"><span className="field-card-icon"><Fingerprint size={21}/></span><div><strong>PhiID</strong><small>phi-account/0.1 · identity metadata</small></div></div>
