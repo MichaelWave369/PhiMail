@@ -18,11 +18,11 @@ The bridge **does not** send email, synchronize folders, store encrypted mail, h
 1. Have Node.js 22+ installed.
 2. Run \`npm install\`.
 3. In Google Cloud, enable the Gmail API and create an OAuth 2.0 **Web application** client ID and secret.
-4. Register the exact redirect URL \`http://localhost:5173/auth/google/callback\`.
+4. Register the exact redirect URL \`http://127.0.0.1:5173/auth/google/callback\`.
 5. Add your account as a test user if the OAuth app is in testing.
 6. Set \`GOOGLE_CLIENT_ID\` and \`GOOGLE_CLIENT_SECRET\` in a **local, gitignored** \`.env.local\` file, along with the values in \`.env.example\`.
 7. Terminal A: \`npm run bridge:dev\`.
-8. Terminal B: \`npm run dev\`, then open \`http://localhost:5173\`. Vite proxies \`/api\` and \`/auth\` to the loopback bridge.
+8. Terminal B: \`npm run dev\`, then open \`http://127.0.0.1:5173\`. Vite proxies \`/api\` and \`/auth\` to the loopback bridge.
 9. Open Accounts and select **Connect Gmail (read-only pilot)**. The Google consent screen will show the actual requested scope.
 
 To run the automated tests: \`npm test\`. These use fake provider responses and do not need Google credentials.
@@ -63,3 +63,7 @@ A forthcoming PhiCloud identity service can provide the user session layer. **Ph
 - Page-based sync, robust MIME/attachment limits, error recovery and quota handling.
 - Hosted OAuth verification, penetration testing, secure production deployment.
 - Add sending as a separate capability with explicit permission and approval.
+
+## PhiID R2 optional local identity experiment
+
+To test independent PhiID sign-in from the same PhiMail bridge, set PHIMAIL_LOCAL_PHIID=1 and BRIDGE_PUBLIC_ORIGIN=http://127.0.0.1:5173 in gitignored .env.local. This requires a separate PhiMail OIDC client in PhiID's local Keycloak realm. Consult [R2 setup](LOCAL_PHIID_R2.md). Identity sessions do **not** link, authorize, or modify existing Gmail sessions. If testing Google OAuth too, register the matching 127.0.0.1 Gmail callback in Google Cloud; the redirect URI must match exactly.

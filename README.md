@@ -34,7 +34,7 @@ Use **Field Connections** in the sidebar to inspect a synthetic PhiID identity e
 
 ## R2: Independent local PhiID OIDC login
 
-The development-only Field Connections panel can sign into the **same local Keycloak realm** used by PhiID, using PhiMail's own audited OAuth Authorization Code + PKCE session. This is a real verified **localhost test identity**, but not cloud authorization, Gmail linking or hosted SSO. See [R2 local identity setup](docs/LOCAL_PHIID_R2.md). No login is provided on GitHub Pages.
+The development-only Field Connections panel can sign into the **same local Keycloak realm** used by PhiID, using PhiMail's own audited OAuth Authorization Code + PKCE session. This is a locally verified **localhost test identity**, but not cloud authorization, Gmail linking or hosted SSO. See [R2 local identity setup](docs/LOCAL_PHIID_R2.md). No login is provided on GitHub Pages.
 
 ## Roadmap
 
