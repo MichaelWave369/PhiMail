@@ -8,12 +8,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "bridge:dev": "node --env-file-if-exists=.env.local server/index.js",
-    "test": "vitest run && node --test server/*.test.js"
+    "test": "vitest run && node --test server/*.test.js",
+    "test:phiid": "node --test server/phiid-dev.test.js"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "openid-client": "6.8.8"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
