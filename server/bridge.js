@@ -9,11 +9,12 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createPhiIdLab } from './phiid-lab.js';
 import { createMailboxReview } from './mailbox-review.js';
+import { createMailboxGateway } from './mailbox-core.js';
+import { createGmailReadAdapter } from './providers/gmail.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GMAIL_URL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const SESSION_LIFETIME_MS = 8 * 60 * 60 * 1000;
 const OAUTH_LIFETIME_MS = 10 * 60 * 1000;
 const MAX_PROVIDER_BYTES = 1024 * 1024;
@@ -52,55 +53,6 @@ function redirect(res, location, cookies = []) {
   res.writeHead(302, { ...JSON_HEADERS, Location: location, 'Set-Cookie': cookies });
   res.end();
 }
-function headersOf(payload) {
-  return Object.fromEntries((payload?.headers || []).filter(entry => typeof entry?.name === 'string').map(item => [item.name.toLowerCase(), String(item.value || '')]));
-}
-function readableBody(payload) {
-  // Gmail MIME parts can be attacker-controlled. Bound recursion, fanout and decoding.
-  let visited = 0;
-  function visit(part, depth) {
-    if (!part || typeof part !== 'object' || depth > 12 || ++visited > 150) return '';
-    if (part.mimeType === 'text/plain' && typeof part.body?.data === 'string') {
-      const data = part.body.data;
-      if (data.length > 270_000 || !/^[A-Za-z0-9_-]*={0,2}$/.test(data)) return '';
-      try { return Buffer.from(data, 'base64url').toString('utf8').slice(0, 100_000); }
-      catch { return ''; }
-    }
-    if (!Array.isArray(part.parts)) return '';
-    for (const child of part.parts.slice(0, 30)) {
-      const found = visit(child, depth+1);
-      if (found) return found;
-    }
-    return '';
-  }
-  return visit(payload,0);
-}
-function gmailSummary(record, email) {
-  if (!record || typeof record !== 'object' || !/^[a-zA-Z0-9_-]{1,128}$/.test(record.id || '')) {
-    throw Object.assign(new Error('Invalid Gmail record'),{status:502});
-  }
-  const headers = headersOf(record.payload);
-  const sender = (headers.from || '(Unknown sender)').slice(0, 320);
-  const time = Number(record.internalDate);
-  const validTime = Number.isFinite(time) && time > 0 && time <= 8.64e15;
-  const date = validTime ? new Date(time).toISOString() : new Date(0).toISOString();
-  return {
-    id: record.id,
-    threadId: typeof record.threadId === 'string' ? record.threadId.slice(0, 128) : null,
-    from: sender,
-    email: sender,
-    to: String(headers.to || email).slice(0, 320),
-    subject: String(headers.subject || '(No subject)').slice(0, 500),
-    date,
-    preview: typeof record.snippet === 'string' ? record.snippet.slice(0,1000) : '',
-    unread: Array.isArray(record.labelIds) && record.labelIds.includes('UNREAD'),
-    starred: Array.isArray(record.labelIds) && record.labelIds.includes('STARRED'),
-    labels: [],
-    folder: 'inbox',
-    provider: 'gmail'
-  };
-}
-
 /**
  * Inject fetch for isolated OAuth/Gmail test doubles. No external requests in unit tests.
  */
@@ -183,10 +135,6 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     session.accessExpires = Date.now() + Math.max(60, Number(data.expires_in) || 3600) * 1000;
     return session.accessToken;
   }
-  async function gmailGet(session, path, maxBytes = 256_000) {
-    const token = await accessToken(session);
-    return requestProvider(GMAIL_URL + path, { headers: { Authorization: 'Bearer ' + token } }, maxBytes);
-  }
   async function runLimitedMail(session, res, operation) {
     const now = Date.now();
     if (!session.mailBudget || now - session.mailBudget.started >= 60_000) {
@@ -202,6 +150,10 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     try { await operation(); }
     finally { budget.active -= 1; }
   }
+  const gmailAdapter=createGmailReadAdapter({
+    requestProvider,accessToken,ready
+  });
+  const mailboxes=createMailboxGateway({adapters:[gmailAdapter]});
   const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
 
   async function handle(req, res) {
@@ -216,8 +168,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
       mode: 'experimental-readonly', sameOriginRequired: true,
-      providers: [{ id: 'gmail', ready, capabilities: ['read:inbox', 'read:message'] },
-        { id: 'outlook', ready: false, capabilities: [] }, { id: 'imap', ready: false, capabilities: [] }]
+      providers: mailboxes.catalog()
     });
 
     if (req.method === 'GET' && path === '/auth/google/start') {
@@ -263,7 +214,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
           (token.refresh_token && (typeof token.refresh_token !== 'string' || token.refresh_token.length > 8192))) {
         return json(res,502,{error:'Provider did not supply usable OAuth tokens'},{'Set-Cookie':cleared});
       }
-      const profile = await requestProvider(GMAIL_URL + '/profile', { headers: { Authorization: 'Bearer ' + token.access_token } }, 64_000);
+      const profile = await gmailAdapter.profile(token.access_token);
       if (typeof profile.emailAddress !== 'string' || !profile.emailAddress.includes('@'))
         return json(res, 502, { error: 'Provider did not return an email identity' }, { 'Set-Cookie': cleared });
       const previousHandle = parseCookies(req.headers.cookie).pm_google;
@@ -277,7 +228,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
         return json(res,429,{error:'Too many experimental sessions. Restart the local bridge.'},{'Set-Cookie':cleared});
       }
       const sid = randomToken(), rotation = randomToken();
-      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), rotation, accessToken: token.access_token, refreshToken: token.refresh_token || null,
+      sessions.set(sid, { provider:'gmail', email: profile.emailAddress, sessionMarker: randomToken(), rotation, accessToken: token.access_token, refreshToken: token.refresh_token || null,
         accessExpires: Date.now() + Number(token.expires_in) * 1000, expires: Date.now() + SESSION_LIFETIME_MS });
       rotations.set(rotation,sid);
       // Important: cookies are scoped by host, not port. Never put the Gmail
@@ -290,7 +241,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
 
     if (req.method === 'GET' && path === '/api/session') {
       const session = sessionFor(req);
-      return json(res, 200, { connected: Boolean(session), provider: session ? 'gmail' : null, email: session?.email || null, capabilities: session ? ['read:inbox', 'read:message'] : [] });
+      return json(res, 200, { connected: Boolean(session), provider: session?.provider || null, email: session?.email || null, capabilities: session ? ['read:inbox', 'read:message'] : [] });
     }
 
     if (req.method === 'POST' && path === '/api/session/disconnect') {
@@ -314,25 +265,12 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       if (!session) return json(res, 401, { error: 'Connect an account first' });
       return runLimitedMail(session,res,async()=>{
         if (path === '/api/mail/messages') {
-          const requested = Number(url.searchParams.get('limit') || 15);
-          const limit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, 20)) : 15;
-          const list = await gmailGet(session, '/messages?labelIds=INBOX&maxResults=' + limit);
-          const ids = Array.isArray(list.messages) ?
-            list.messages.slice(0,limit).filter(x=>typeof x?.id==='string' && /^[a-zA-Z0-9_-]{1,128}$/.test(x.id)) : [];
-          const summaries = [];
-          // Small batches avoid hitting the provider with 20 simultaneous calls.
-          for(let i=0;i<ids.length;i+=5) {
-            const batch = await Promise.all(ids.slice(i,i+5).map(item=>
-              gmailGet(session,'/messages/'+encodeURIComponent(item.id)+'?format=metadata')));
-            summaries.push(...batch.map(record=>gmailSummary(record,session.email)));
-          }
-          return json(res, 200, { messages: summaries, nextPageAvailable: Boolean(list.nextPageToken) });
+          const requested=Number(url.searchParams.get('limit') || 15);
+          const limit=Number.isInteger(requested)?Math.max(1,Math.min(requested,20)):15;
+          return json(res,200,await mailboxes.listInbox({session,limit}));
         }
-        const id = path.slice('/api/mail/messages/'.length);
-        if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return json(res, 400, { error: 'Invalid message identifier' });
-        const record = await gmailGet(session, '/messages/' + encodeURIComponent(id) + '?format=full', MAX_PROVIDER_BYTES);
-        const message = gmailSummary(record,session.email);
-        return json(res, 200, { ...message, body: readableBody(record.payload) || '[No plain-text body found. HTML is deliberately not rendered in this pilot.]' });
+        const id=path.slice('/api/mail/messages/'.length);
+        return json(res,200,await mailboxes.readMessage({session,id}));
       });
     }
     return json(res, 404, { error: 'Not found' });

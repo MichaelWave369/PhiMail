@@ -44,6 +44,10 @@ Field Connections now includes a local-only, expiring **consent-to-review** flow
 
 The optional local Gmail bridge now rotates its sessions across OAuth reconnects, limits provider response size and MIME traversal, rejects ambiguous cookies, and throttles mail API calls. The public demo remains separate and no mailbox is linked to PhiID. See [R4 technical changes and remaining limitations](docs/BRIDGE_HARDENING_R4.md).
 
+## R5: Shared read-only mailbox adapter engine
+
+The experimental bridge now uses a **provider-neutral mailbox contract**: Gmail is the sole operational read-only adapter, while Outlook and IMAP remain clearly marked *not implemented*. This centralizes message validation and read-only capabilities without letting a login or untrusted provider response grant permissions. See [R5 mailbox adapter contract](docs/MAILBOX_CORE_R5.md). No sending, provider linking, hosted mail, or public multi-user service was added.
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

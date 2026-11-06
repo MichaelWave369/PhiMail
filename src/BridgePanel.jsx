@@ -76,6 +76,12 @@ export default function BridgePanel({ onClose }) {
         <button className="bridge-icon-button bridge-close" aria-label="Close Gmail pilot" onClick={onClose}><X size={20}/></button>
       </header>
       <div className="bridge-notice"><ShieldCheck size={19}/><p><b>Experimental read-only connector.</b> Tokens remain in the bridge's server memory. No Gmail messages are saved in PhiMail browser storage, and sending, deleting or modifying real messages is not supported.</p></div>
+      {providers?.providers&&<div className="bridge-provider-catalog" aria-label="Mail provider adapter availability">
+        {providers.providers.map(item=><div key={item.id} className={'bridge-provider-item '+(item.ready?'is-ready':'')}>
+          <span>{item.name||item.id}</span>
+          <small>{item.ready?'Reader configured':item.id==='gmail'?'Setup required':'Not implemented'}</small>
+        </div>)}
+      </div>}
 
       {session===null ? <div className="bridge-center"><RefreshCw className="bridge-spin" size={30}/><p>Checking bridge connection…</p></div>
       : !session.connected ? <div className="bridge-center">
