@@ -75,7 +75,7 @@ export function assertPhiIdLocalRequest(req) {
     req.headers['sec-fetch-site'] !== 'cross-site';
 }
 
-export function createPhiIdDevAdapter({ env = process.env } = {}) {
+export function createPhiIdDevAdapter({ env = process.env, oidcClient = oidc } = {}) {
   const enabled = env.PHIMAIL_ENABLE_PHIID_DEV === '1';
   if (enabled && env.NODE_ENV === 'production') {
     throw new Error('PhiID development bridge must never run in production');
@@ -85,10 +85,10 @@ export function createPhiIdDevAdapter({ env = process.env } = {}) {
   let configPromise;
 
   function config() {
-    if (!configPromise) configPromise = oidc.discovery(
+    if (!configPromise) configPromise = oidcClient.discovery(
       new URL(ISSUER), CLIENT_ID,
-      { token_endpoint_auth_method:'none' }, oidc.None(),
-      { execute:[oidc.allowInsecureRequests], timeout: 8 },
+      { token_endpoint_auth_method:'none' }, oidcClient.None(),
+      { execute:[oidcClient.allowInsecureRequests], timeout: 8 },
     ).then(c => {
       assertPhiIdProviderMetadata(c.serverMetadata());
       if (!c.serverMetadata().supportsPKCE()) throw new Error('S256_pkce_required');
@@ -132,12 +132,12 @@ export function createPhiIdDevAdapter({ env = process.env } = {}) {
       }
       const configuration = await config();
       const flowId=randomId();
-      const verifier=oidc.randomPKCECodeVerifier();
-      const challenge=await oidc.calculatePKCECodeChallenge(verifier);
-      const state=oidc.randomState();
-      const nonce=oidc.randomNonce();
+      const verifier=oidcClient.randomPKCECodeVerifier();
+      const challenge=await oidcClient.calculatePKCECodeChallenge(verifier);
+      const state=oidcClient.randomState();
+      const nonce=oidcClient.randomNonce();
       pending.set(flowId, { verifier,state,nonce,expires:Date.now()+FLOW_TTL });
-      const destination=oidc.buildAuthorizationUrl(configuration,{
+      const destination=oidcClient.buildAuthorizationUrl(configuration,{
         redirect_uri:REDIRECT_URI,scope:'openid profile',
         code_challenge:challenge,code_challenge_method:'S256',state,nonce,
       });
@@ -161,7 +161,7 @@ export function createPhiIdDevAdapter({ env = process.env } = {}) {
         return true;
       }
       const configuration=await config();
-      const tokens=await oidc.authorizationCodeGrant(configuration,url,{
+      const tokens=await oidcClient.authorizationCodeGrant(configuration,url,{
         pkceCodeVerifier:flow.verifier,
         expectedState:flow.state,
         expectedNonce:flow.nonce,
