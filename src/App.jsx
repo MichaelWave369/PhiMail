@@ -3,10 +3,11 @@ import {
   Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, ChevronDown,
   ExternalLink, FilePenLine, FileUp, Inbox, LayoutGrid, LockKeyhole,
   Mail, MailOpen, Menu, PanelLeftClose, Plus, RotateCcw, Search, Send,
-  Settings2, ShieldCheck, Sparkles, Star, Trash2, X
+  Settings2, ShieldCheck, Sparkles, Star, Trash2, Network, X
 } from 'lucide-react';
 import { DEMO_ADDRESS, seedMessages, validateImportedMessages } from './demo.js';
 import BridgePanel from './BridgePanel.jsx';
+import FieldConnections from './integrations/FieldConnections.jsx';
 
 const KEY = 'phimail-demo-v1';
 const BLANK = {to:'', subject:'', body:'', editingId:null};
@@ -43,6 +44,7 @@ export default function App(){
   const [draft,setDraft]=useState(BLANK);
   const [dialog,setDialog]=useState('');
   const [bridgeOpen,setBridgeOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phimail'));
+  const [fieldConnectionsOpen,setFieldConnectionsOpen]=useState(false);
   const [toast,setToast]=useState('');
   const [mobileMenu,setMobileMenu]=useState(false);
   const [mobileReader,setMobileReader]=useState(false);
@@ -150,6 +152,7 @@ export default function App(){
       {!collapsed&&<div className="nav-caption">YOUR FIELD</div>}
       <button className="folder-link" onClick={()=>setDialog('accounts')}><LayoutGrid size={19}/>{!collapsed&&<><span>Accounts</span><small className="soon-label">SOON</small></>}</button>
       <button className="folder-link" onClick={()=>setDialog('settings')}><Settings2 size={19}/>{!collapsed&&<span>Local settings</span>}</button>
+      <button className="folder-link" onClick={()=>setFieldConnectionsOpen(true)}><Network size={19}/>{!collapsed&&<span>Field Connections</span>}</button>
       <div className="sidebar-bottom">
         {!collapsed&&<div className="sidebar-promo"><span className="promo-icon"><Sparkles size={20}/></span><strong>Communication, recentered.</strong><p>Open standards. Private by design. Always your choice.</p><small>Φ A PHIOS EXPERIMENT</small></div>}
         <a href="https://github.com/MichaelWave369/PhiMail" target="_blank" rel="noreferrer" className="open-repo"><ExternalLink size={16}/>{!collapsed&&'Open-source project'}</a>
@@ -217,6 +220,7 @@ export default function App(){
     </section></div>}
 
     {import.meta.env.DEV&&bridgeOpen&&<BridgePanel onClose={()=>setBridgeOpen(false)}/>}
+    {fieldConnectionsOpen&&<FieldConnections onClose={()=>setFieldConnectionsOpen(false)}/>}
     {toast&&<div className="toast" role="status"><Check size={17}/><span>{toast}</span><button onClick={()=>setToast('')} aria-label="Dismiss notice"><X size={15}/></button></div>}
   </div>;
 }
