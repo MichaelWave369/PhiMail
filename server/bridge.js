@@ -78,7 +78,7 @@ function gmailSummary(record, email) {
 /**
  * Inject fetch for isolated OAuth/Gmail test doubles. No external requests in unit tests.
  */
-export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
+export function createBridge({ env = process.env, fetchImpl = fetch, oidcClient } = {}) {
   const configuredOrigin = env.BRIDGE_PUBLIC_ORIGIN || 'http://localhost:5173';
   const frontendOrigin = new URL(configuredOrigin);
   if (frontendOrigin.pathname !== '/' || frontendOrigin.search || frontendOrigin.hash) throw new Error('BRIDGE_PUBLIC_ORIGIN must be an origin only');
@@ -91,7 +91,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
   const clientId = env.GOOGLE_CLIENT_ID || '';
   const clientSecret = env.GOOGLE_CLIENT_SECRET || '';
   const ready = Boolean(clientId && clientSecret);
-  const phiidDev = createPhiIdDevAdapter({ env });
+  const phiidDev = createPhiIdDevAdapter({ env, oidcClient });
   const oauthPending = new Map();
   const sessions = new Map();
   const startLimits = new Map();
