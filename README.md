@@ -36,6 +36,10 @@ Use **Field Connections** in the sidebar to inspect a synthetic PhiID identity e
 
 The development-only Field Connections panel can sign into the **same local Keycloak realm** used by PhiID, using PhiMail's own audited OAuth Authorization Code + PKCE session. This is a locally verified **localhost test identity**, but not cloud authorization, Gmail linking or hosted SSO. See [R2 local identity setup](docs/LOCAL_PHIID_R2.md). No login is provided on GitHub Pages.
 
+## R3: explicit local mailbox review (no real linking)
+
+Field Connections now includes a local-only, expiring **consent-to-review** flow for the current verified PhiID test identity and separately connected Gmail account. It requires deliberate acknowledgment and allows immediate clearing. This is **not** permanent account linking, mailbox authorization or a PhiCloud grant. See [R3 setup](docs/MAILBOX_REVIEW_R3.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

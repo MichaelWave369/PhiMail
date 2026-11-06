@@ -231,5 +231,11 @@ export function createPhiIdLab({env = process.env, provider = null} = {}) {
     }
     return json(res,404,{error:'not_found'}),true;
   }
-  return {enabled,handle};
+  // Server-internal only: the mailbox-review boundary uses this already
+  // verified session. Never expose this method through HTTP or client JS.
+  function lookupSession(req){
+    prune();
+    return enabled && requestIsLocal(req) ? activeSession(req) : null;
+  }
+  return {enabled,handle,lookupSession};
 }

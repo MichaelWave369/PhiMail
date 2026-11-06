@@ -49,3 +49,7 @@ npm test runs mocking tests for one-time OAuth state, callback replay, host mism
 PhiCloud may eventually host the common OIDC provider and enforce resource authorization, but its current R0 service registry is **declarative** and cannot be used as a token authority. Use real OIDC validation by each resource service and the signed, audience-limited access-token approach in the PhiID and PhiCloud contracts.
 
 See also PhiMail issue #4 and PhiCloud docs/PHIID_PHIMAIL_IDENTITY.md.
+
+## R3 mailbox association review
+
+A local-only consent-to-review interface now requires both the separately verified PhiID and Gmail sessions before recording a temporary, non-enforcing receipt. See [R3 walkthrough and security limits](MAILBOX_REVIEW_R3.md). This is NOT an account link.
