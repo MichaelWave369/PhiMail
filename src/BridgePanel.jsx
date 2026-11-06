@@ -40,7 +40,10 @@ export default function BridgePanel({ onClose }) {
         setSession(status); setProviders(available);
         if (status.connected) await loadMailbox();
       } catch {
-        if (!cancelled) setError('The PhiMail bridge is not running. Start npm run bridge:dev on localhost, then refresh.');
+        if (!cancelled) {
+          setSession({connected:false});
+          setError('The PhiMail bridge is not running. Start npm run bridge:dev on localhost, then reopen this panel.');
+        }
       }
     })();
     return () => { cancelled = true; };
