@@ -36,7 +36,7 @@ function parseCookies(raw = '') {
     const index = item.indexOf('=');
     if (index < 0) continue;
     const name = item.slice(0,index).trim(), value = item.slice(index+1).trim();
-    if (!['pm_session','pm_oauth'].includes(name)) continue;
+    if (!['pm_session','pm_oauth','pm_google'].includes(name)) continue;
     if (seen.has(name)) { duplicates.add(name); continue; }
     seen.add(name);
     if (/^[A-Za-z0-9_-]{20,100}$/.test(value)) result[name] = value;
@@ -120,6 +120,9 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   const phiidLab = createPhiIdLab({env,provider:identityProvider});
   const oauthPending = new Map();
   const sessions = new Map();
+  // Rotation handles are NOT Gmail session credentials and are scoped only
+  // to the Google callback path; the bearer session stays scoped to /api.
+  const rotations = new Map();
   const startLimits = new Map();
 
   function cookie(name, value, maxAge, path) {
@@ -129,6 +132,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const now = Date.now();
     for (const [key, entry] of oauthPending) if (entry.expires < now) oauthPending.delete(key);
     for (const [key, entry] of sessions) if (entry.expires < now) sessions.delete(key);
+    for (const [handle, sid] of rotations) if (!sessions.has(sid)) rotations.delete(handle);
     for (const [key, entry] of startLimits) if (entry.until < now) startLimits.delete(key);
   }
   function validateOrigin(req) {
@@ -262,18 +266,25 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       const profile = await requestProvider(GMAIL_URL + '/profile', { headers: { Authorization: 'Bearer ' + token.access_token } }, 64_000);
       if (typeof profile.emailAddress !== 'string' || !profile.emailAddress.includes('@'))
         return json(res, 502, { error: 'Provider did not return an email identity' }, { 'Set-Cookie': cleared });
-      const oldSid = parseCookies(req.headers.cookie).pm_session;
-      if (oldSid) sessions.delete(oldSid);
+      const previousHandle = parseCookies(req.headers.cookie).pm_google;
+      const oldSid = previousHandle ? rotations.get(previousHandle) : undefined;
+      if (previousHandle) rotations.delete(previousHandle);
+      if (oldSid) {
+        const previousSession = sessions.get(oldSid);
+        if (previousSession?.rotation === previousHandle) sessions.delete(oldSid);
+      }
       if (sessions.size >= MAX_SESSION_COUNT) {
         return json(res,429,{error:'Too many experimental sessions. Restart the local bridge.'},{'Set-Cookie':cleared});
       }
-      const sid = randomToken();
-      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), accessToken: token.access_token, refreshToken: token.refresh_token || null,
+      const sid = randomToken(), rotation = randomToken();
+      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), rotation, accessToken: token.access_token, refreshToken: token.refresh_token || null,
         accessExpires: Date.now() + Number(token.expires_in) * 1000, expires: Date.now() + SESSION_LIFETIME_MS });
-      // Root Path permits the old session ID to reach this OAuth callback for rotation.
-      // Clear the deprecated /api path cookie to prevent same-name ambiguity.
+      rotations.set(rotation,sid);
+      // Important: cookies are scoped by host, not port. Never put the Gmail
+      // bearer cookie at / on 127.0.0.1: it would reach local Keycloak too.
       return redirect(res, origin + '/?phimail=connected', [
-        cleared, cookie('pm_session','',0,'/api'), cookie('pm_session', sid, 8*60*60, '/')
+        cleared, cookie('pm_session','',0,'/'), cookie('pm_session', sid, 8*60*60, '/api'),
+        cookie('pm_google', rotation, 8*60*60, '/auth/google')
       ]);
     }
 
@@ -285,9 +296,16 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     if (req.method === 'POST' && path === '/api/session/disconnect') {
       if (!validateOrigin(req)) return json(res, 403, { error: 'Origin mismatch' });
       const sid = parseCookies(req.headers.cookie).pm_session;
-      if (sid) sessions.delete(sid);
+      if (sid) {
+        const existing = sessions.get(sid);
+        if (existing?.rotation) rotations.delete(existing.rotation);
+        sessions.delete(sid);
+      }
       return json(res, 200, { connected: false }, {
-        'Set-Cookie': [cookie('pm_session','',0,'/api'),cookie('pm_session','',0,'/')]
+        'Set-Cookie': [
+          cookie('pm_session','',0,'/api'),cookie('pm_session','',0,'/'),
+          cookie('pm_google','',0,'/auth/google')
+        ]
       });
     }
 

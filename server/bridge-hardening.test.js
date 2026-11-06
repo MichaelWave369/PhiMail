@@ -37,23 +37,32 @@ function mockProvider({tokenSize=0, fullOversize=false, fullPayload=null, listEn
     return new Response(JSON.stringify(response),{status:200});
   };
 }
-async function oauth(base, priorSession=null){
+async function oauth(base, priorRotation=null){
   const startResponse=await fetch(base+'/auth/google/start',{redirect:'manual'});
   assert.equal(startResponse.status,302);
   const auth=new URL(startResponse.headers.get('location'));
   const flow=startResponse.headers.get('set-cookie').match(/pm_oauth=[A-Za-z0-9_-]+/)?.[0];
   assert.ok(flow);
-  const cookies=[flow,priorSession].filter(Boolean).join('; ');
+  // In a browser, the /auth/google callback receives pm_google but NOT
+  // the pm_session cookie scoped to /api.
+  const cookies=[flow,priorRotation].filter(Boolean).join('; ');
   const callback=await fetch(base+'/auth/google/callback?state='+encodeURIComponent(auth.searchParams.get('state'))+'&code=fake-code',{
     headers:{Cookie:cookies},redirect:'manual'
   });
   assert.equal(callback.status,302);
   const cookieStrings=callback.headers.getSetCookie();
   const issued=cookieStrings.filter(x=>x.startsWith('pm_session=')&&!x.startsWith('pm_session=;')).at(-1);
-  assert.ok(issued,'Missing root session cookie');
-  assert.match(issued,/Path=\/(?:;|$)/);
-  assert.ok(cookieStrings.some(x=>x.includes('pm_session=; Path=/api; Max-Age=0')));
-  return {sid:issued.match(/pm_session=[A-Za-z0-9_-]+/)[0],callback};
+  assert.ok(issued,'Missing scoped API session cookie');
+  assert.match(issued,/Path=\/api(?:;|$)/);
+  const rotationCookie=cookieStrings.find(x=>x.startsWith('pm_google=')&&!x.startsWith('pm_google=;'));
+  assert.ok(rotationCookie,'Missing separate rotation handle');
+  assert.match(rotationCookie,/Path=\/auth\/google(?:;|$)/);
+  assert.ok(cookieStrings.some(x=>x.includes('pm_session=; Path=/; Max-Age=0')));
+  return {
+    sid:issued.match(/pm_session=[A-Za-z0-9_-]+/)[0],
+    rotation:rotationCookie.match(/pm_google=[A-Za-z0-9_-]+/)[0],
+    callback
+  };
 }
 
 describe('R4 Gmail bridge hardening and session isolation',()=>{
@@ -62,7 +71,7 @@ describe('R4 Gmail bridge hardening and session isolation',()=>{
     const first=await oauth(base);
     const before=await (await fetch(base+'/api/session',{headers:{Cookie:first.sid}})).json();
     assert.equal(before.connected,true);
-    const second=await oauth(base,first.sid);
+    const second=await oauth(base,first.rotation);
     assert.notEqual(first.sid,second.sid);
     const old=await (await fetch(base+'/api/session',{headers:{Cookie:first.sid}})).json();
     const current=await (await fetch(base+'/api/session',{headers:{Cookie:second.sid}})).json();
@@ -82,6 +91,7 @@ describe('R4 Gmail bridge hardening and session isolation',()=>{
     const resets=logout.headers.getSetCookie();
     assert.ok(resets.some(x=>x.includes('Path=/api; Max-Age=0')));
     assert.ok(resets.some(x=>x.includes('Path=/; Max-Age=0')));
+    assert.ok(resets.some(x=>x.includes('pm_google=; Path=/auth/google; Max-Age=0')));
   });
   it('refuses duplicate OAuth state and callback codes',async()=>{
     const base=await start(mockProvider());

@@ -4,7 +4,7 @@ This is a **limited, experimental, loopback-only** security and reliability mile
 
 ## Changes
 
-- Gmail session cookies use HttpOnly SameSite=Lax with Path=/ so the OAuth callback can receive and retire the previous Gmail session before creating another. The legacy Path=/api cookie is cleared, including on disconnect. Ambiguous duplicate Gmail cookie names are rejected.
+- The HttpOnly Gmail bearer session stays on Path=/api. A separate, non-authorizing random rotation handle uses Path=/auth/google, so an OAuth callback can retire the prior API session without exposing its bearer cookie to Keycloak or other localhost applications. Any obsolete root-path cookie is explicitly cleared. Ambiguous duplicate cookies are rejected.
 - OAuth callback rejects duplicate state/code parameters and excessively long URLs. One-time state is consumed on callback, even if it fails.
 - Google token, profile and metadata responses have bounded sizes (64 KB for token/profile, 256 KB per metadata/list response, 1 MB for full-message response), including decoded stream bytes instead of trusting Content-Length alone.
 - OAuth token shapes and expiry are checked before sessions are created. Gmail summaries limit output field sizes and reject malformed message identifiers. Implausible timestamps default to Unix epoch.
