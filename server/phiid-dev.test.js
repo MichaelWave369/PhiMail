@@ -46,13 +46,13 @@ describe('PhiMail independent PhiID local OIDC contract', () => {
 const servers=[];
 afterEach(async()=>{ for(const s of servers.splice(0)) await new Promise(r=>s.close(r)); });
 
-async function runBridge(enabled){
+async function runBridge(enabled,mockOidc){
   const srv=createBridge({env:{
     NODE_ENV:'test',
     BRIDGE_PUBLIC_ORIGIN:'http://localhost:5173',
     GOOGLE_CLIENT_ID:'',GOOGLE_CLIENT_SECRET:'',
     PHIMAIL_ENABLE_PHIID_DEV:enabled?'1':'0',
-  },fetchImpl:async()=>{throw Error('unexpected provider network');}});
+  },oidcClient:mockOidc,fetchImpl:async()=>{throw Error('unexpected provider network');}});
   await new Promise(resolve=>srv.listen(0,'127.0.0.1',resolve));
   servers.push(srv);
   return srv.address().port;
@@ -108,5 +108,127 @@ describe('PhiMail dev bridge OIDC routes',()=>{
     assert.equal(JSON.parse(logout.body).authenticated,false);
     const gmail=await request(port,'/api/session');
     assert.equal(JSON.parse(gmail.body).connected,false);
+  });
+});
+
+function fakeOidcClient() {
+  let loginState;
+  let loginNonce;
+  let verifier;
+  const calls=[];
+  const config={
+    serverMetadata:()=>({...META,supportsPKCE:()=>true}),
+  };
+  const mock={
+    calls,
+    None:()=>()=>{},
+    allowInsecureRequests:()=>{},
+    discovery:async (issuer,clientId,clientMetadata,auth,opts)=>{
+      calls.push('discovery');
+      assert.equal(issuer.href,ISSUER);
+      assert.equal(clientId,'phimail-phiid-dev');
+      assert.equal(clientMetadata.token_endpoint_auth_method,'none');
+      assert.ok(Array.isArray(opts.execute));
+      return config;
+    },
+    randomPKCECodeVerifier:()=>{verifier='test-verifier';return verifier;},
+    calculatePKCECodeChallenge:async raw=>{
+      assert.equal(raw,verifier);
+      return 'test-sha256-challenge';
+    },
+    randomState:()=>{loginState='test-state';return loginState;},
+    randomNonce:()=>{loginNonce='test-nonce';return loginNonce;},
+    buildAuthorizationUrl:(cfg,params)=>{
+      assert.equal(cfg,config);
+      assert.equal(params.redirect_uri,'http://localhost:5173/auth/phiid/callback');
+      assert.equal(params.scope,'openid profile');
+      assert.equal(params.code_challenge_method,'S256');
+      assert.equal(params.code_challenge,'test-sha256-challenge');
+      const url=new URL(META.authorization_endpoint);
+      Object.entries(params).forEach(([name,value])=>url.searchParams.set(name,value));
+      return url;
+    },
+    authorizationCodeGrant:async (cfg,callback,checks)=>{
+      calls.push('authorizationCodeGrant');
+      assert.equal(cfg,config);
+      assert.equal(callback.searchParams.get('code'),'disposable-test-code');
+      assert.equal(checks.expectedState,loginState);
+      assert.equal(checks.expectedNonce,loginNonce);
+      assert.equal(checks.pkceCodeVerifier,verifier);
+      assert.equal(checks.idTokenExpected,true);
+      return {access_token:'never-expose-this-mock-token',claims:()=>({
+        iss:ISSUER,sub:'test-subject-123',preferred_username:'test-only',
+        exp:Math.floor(Date.now()/1000)+300,
+      })};
+    },
+  };
+  return mock;
+}
+
+describe('PhiMail OIDC state machine with a fake provider (not a Keycloak E2E test)',()=>{
+  it('starts a pinned PKCE flow, completes once, exposes only a safe profile and keeps Gmail independent',async()=>{
+    const fake=fakeOidcClient();
+    const port=await runBridge(true,fake);
+    const start=await request(port,'/auth/phiid/start');
+    assert.equal(start.status,302);
+    const redirect=new URL(start.headers.location);
+    assert.equal(redirect.origin,'http://127.0.0.1:8080');
+    assert.equal(redirect.searchParams.get('code_challenge_method'),'S256');
+    assert.equal(redirect.searchParams.get('state'),'test-state');
+    const flow=(start.headers['set-cookie']||[]).find(x=>x.startsWith('pm_phi_flow=')).split(';')[0];
+    const callback=await request(port,'/auth/phiid/callback?code=disposable-test-code&state=test-state',{
+      headers:{Cookie:flow}
+    });
+    assert.equal(callback.status,302);
+    assert.equal(callback.headers.location,'http://localhost:5173/?phiid=verified');
+    const sessionCookie=(callback.headers['set-cookie']||[])
+      .find(x=>x.startsWith('pm_phi_id=')).split(';')[0];
+    assert.ok(sessionCookie);
+
+    const session=await request(port,'/api/phiid/session',{headers:{Cookie:sessionCookie}});
+    assert.equal(session.status,200);
+    const profile=JSON.parse(session.body);
+    assert.equal(profile.authenticated,true);
+    assert.equal(profile.subject,'test-subject-123');
+    assert.equal(profile.issuer,ISSUER);
+    assert.deepEqual(profile.capabilities,[]);
+    assert.equal(profile.mailbox_connected,false);
+    assert.equal(profile.phios_authority,false);
+    assert.ok(!session.body.includes('never-expose-this-mock-token'));
+    assert.ok(!Object.hasOwn(profile,'email'));
+    assert.ok(!Object.hasOwn(profile,'access_token'));
+
+    const gmail=await request(port,'/api/session',{headers:{Cookie:sessionCookie}});
+    assert.equal(JSON.parse(gmail.body).connected,false);
+
+    const replay=await request(port,'/auth/phiid/callback?code=disposable-test-code&state=test-state',{
+      headers:{Cookie:flow}
+    });
+    assert.equal(replay.status,400);
+    assert.deepEqual(fake.calls,['discovery','authorizationCodeGrant']);
+
+    const logout=await request(port,'/api/phiid/logout',{method:'POST',headers:{
+      Cookie:sessionCookie,Origin:'http://localhost:5173',
+      'X-PhiMail-Action':'phiid-logout'
+    }});
+    assert.equal(logout.status,200);
+    const after=await request(port,'/api/phiid/session',{headers:{Cookie:sessionCookie}});
+    assert.equal(JSON.parse(after.body).authenticated,false);
+  });
+
+  it('rejects a wrong state without exchanging tokens and consumes the flow',async()=>{
+    const fake=fakeOidcClient();
+    const port=await runBridge(true,fake);
+    const start=await request(port,'/auth/phiid/start');
+    const flow=start.headers['set-cookie'].find(x=>x.startsWith('pm_phi_flow=')).split(';')[0];
+    const mismatch=await request(port,'/auth/phiid/callback?code=disposable-test-code&state=attacker-state',{
+      headers:{Cookie:flow}
+    });
+    assert.equal(mismatch.status,400);
+    assert.ok(!fake.calls.includes('authorizationCodeGrant'));
+    const replay=await request(port,'/auth/phiid/callback?code=disposable-test-code&state=test-state',{
+      headers:{Cookie:flow}
+    });
+    assert.equal(replay.status,400);
   });
 });
