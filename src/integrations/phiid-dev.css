@@ -1,0 +1,14 @@
+.phiid-rp-lab{margin:19px 0 13px;padding:15px;background:#111d26;border:1px solid #39534a;border-radius:11px}
+.phiid-rp-heading{display:flex;gap:8px;align-items:center;color:#bee6d5;font-size:12px}
+.phiid-rp-lab p,.phiid-rp-lab small{font-size:11px;line-height:1.65;color:#9eb6ba}
+.phiid-rp-note{border:1px solid #55503d;background:#29271d;color:#ebd3a3;font-size:11px;line-height:1.65;padding:10px;border-radius:7px;overflow-wrap:anywhere}
+.phiid-rp-error{display:flex;align-items:flex-start;gap:8px;color:#f1b5a5;padding:8px 0;font-size:11px}
+.phiid-rp-button{display:inline-flex;align-items:center;gap:8px;margin-top:11px;padding:9px 12px;border:1px solid #527e6b;background:#28463a;color:#d9f5e7;font-size:11px;font-weight:700;border-radius:8px;cursor:pointer;text-decoration:none}
+.phiid-rp-button:hover{background:#335b48}
+.phiid-rp-button:disabled{opacity:.5;cursor:not-allowed}
+.phiid-rp-verified{margin-top:12px}
+.phiid-rp-status{display:flex;align-items:center;gap:6px;color:#9ae2c0;font-size:11px}
+.phiid-rp-verified dl{display:grid;grid-template-columns:minmax(85px,.4fr) minmax(0,1fr);gap:8px 14px;padding:12px 0;font-size:11px}
+.phiid-rp-verified dt{color:#8caaac}
+.phiid-rp-verified dd{margin:0;color:#e7f3ec;overflow-wrap:anywhere}
+.phiid-rp-lab code{font-size:10px}
