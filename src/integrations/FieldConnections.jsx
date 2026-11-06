@@ -3,8 +3,9 @@ import { Cloud, FileUp, Fingerprint, Info, Layers3, LockKeyhole, RefreshCw, Shie
 import { inspectPhiIdPreviewExport, readLocalPhiCloudRegistry } from './contracts.js';
 import './connections.css';
 import LocalPhiIdCard from './LocalPhiIdCard.jsx';
+import MailboxReviewCard from './MailboxReviewCard.jsx';
 
-export default function FieldConnections({onClose}) {
+export default function FieldConnections({onClose,onOpenGmail}) {
   const [account,setAccount]=useState(null);
   const [accountError,setAccountError]=useState('');
   const [registry,setRegistry]=useState(null);
@@ -38,6 +39,7 @@ export default function FieldConnections({onClose}) {
       <header className="field-head"><span className="field-brand"><Layers3 size={22}/></span><div><small>Φ ECOSYSTEM · R1</small><h2 id="field-heading">Field Connections</h2></div><span className="field-label">CONTRACT PREVIEW</span><button aria-label="Close Field Connections" onClick={onClose}><X size={20}/></button></header>
       <div className="field-warning"><Info size={17}/><span>Read-only integration preview. <b>Nothing here signs in a user, connects a real account, confirms service health or grants permissions.</b></span></div>
       {import.meta.env.DEV&&<LocalPhiIdCard/>}
+      {import.meta.env.DEV&&<MailboxReviewCard onOpenGmail={onOpenGmail}/>}
       <div className="field-columns">
         <section className="field-card">
           <div className="field-card-head"><span className="field-card-icon"><Fingerprint size={21}/></span><div><strong>PhiID</strong><small>phi-account/0.1 · identity metadata</small></div></div>

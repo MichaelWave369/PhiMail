@@ -8,6 +8,7 @@
 import { createServer } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createPhiIdLab } from './phiid-lab.js';
+import { createMailboxReview } from './mailbox-review.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -142,12 +143,16 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const token = await accessToken(session);
     return requestProvider(GMAIL_URL + path, { headers: { Authorization: 'Bearer ' + token } });
   }
+  const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
+
   async function handle(req, res) {
     cleanExpired();
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Cache-Control','no-store');
     const url = new URL(req.url || '/', origin);
     const path = url.pathname;
+    // Review runs first because the PhiID lab reserves /api/identity/*.
+    if (await mailboxReview.handle(req,res,path,url)) return;
     if (await phiidLab.handle(req,res,path,url)) return;
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
@@ -197,7 +202,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       const oldSid = parseCookies(req.headers.cookie).pm_session;
       if (oldSid) sessions.delete(oldSid);
       const sid = randomToken();
-      sessions.set(sid, { email: profile.emailAddress, accessToken: token.access_token, refreshToken: token.refresh_token || null,
+      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), accessToken: token.access_token, refreshToken: token.refresh_token || null,
         accessExpires: Date.now() + Number(token.expires_in) * 1000, expires: Date.now() + SESSION_LIFETIME_MS });
       return redirect(res, origin + '/?phimail=connected', [cleared, cookie('pm_session', sid, 8*60*60, '/api')]);
     }

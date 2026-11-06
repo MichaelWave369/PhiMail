@@ -220,7 +220,7 @@ export default function App(){
     </section></div>}
 
     {import.meta.env.DEV&&bridgeOpen&&<BridgePanel onClose={()=>setBridgeOpen(false)}/>}
-    {fieldConnectionsOpen&&<FieldConnections onClose={()=>setFieldConnectionsOpen(false)}/>}
+    {fieldConnectionsOpen&&<FieldConnections onClose={()=>setFieldConnectionsOpen(false)} onOpenGmail={()=>{setFieldConnectionsOpen(false);setBridgeOpen(true);}}/>}
     {toast&&<div className="toast" role="status"><Check size={17}/><span>{toast}</span><button onClick={()=>setToast('')} aria-label="Dismiss notice"><X size={15}/></button></div>}
   </div>;
 }
