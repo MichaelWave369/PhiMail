@@ -28,6 +28,14 @@ Use `npm run bridge:dev` and `npm run dev` in separate terminals after configuri
 
 **No sending, Gmail modification, hosted mailbox, Outlook connection, or IMAP adapter is implemented in this rung.** All existing demo features remain available.
 
+## PhiID sign-in R2B · independent localhost OIDC client
+
+An **optional, disabled-by-default** local Keycloak sign-in has been added to Field Connections. PhiMail uses its **own** public OIDC client, PKCE S256, state/nonce and short-lived HttpOnly session. It can verify the same local test user's issuer and subject as PhiID after a separate login.
+
+This **does not** create an email address, connect a mailbox, share Google/Gmail credentials, grant PhiCloud permissions or authorize PhiOS actions. The static GitHub Pages build remains a non-authenticating demo.
+
+Read [PhiMail R2B independent PhiID sign-in setup](docs/PHIID_OIDC_R2B.md) and the companion [PhiID R3 realm registration guide](https://github.com/MichaelWave369/PhiID/blob/main/docs/R3_PHIMAIL_DUAL_CLIENT.md).
+
 ## Field Connections R1 · integration contract inspector
 
 Use **Field Connections** in the sidebar to inspect a synthetic PhiID identity export (display-only) and, when developing locally, read the PhiCloud R0 declared service inventory. Neither action authenticates an account or establishes service health. Read the [integration guide](docs/INTEGRATION_R1.md) for setup and security boundaries.
