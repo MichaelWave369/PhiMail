@@ -20,13 +20,17 @@ Requirements: Node.js 22+
 GitHub Actions verifies pull requests and deploys main to GitHub Pages, provided the repository's Pages source is configured to GitHub Actions.
 
 
-## Rung 2A · experimental Gmail bridge (feature branch)
+## Rung 2A · experimental Gmail bridge (local development only)
 
 A separate **Node.js server** and optional local development panel can now connect a Google account through OAuth Authorization Code + PKCE, read recent Gmail inbox summaries, and display plain-text messages. The Gmail pilot is only visible in `npm run dev`, not in the public GitHub Pages production build.
 
 Use `npm run bridge:dev` and `npm run dev` in separate terminals after configuring Google OAuth credentials. See [the bridge setup and security guide](docs/BRIDGE.md). Do not attempt public deployment yet: token/session persistence, account separation, provider verification, security testing, and production infrastructure are unfinished.
 
 **No sending, Gmail modification, hosted mailbox, Outlook connection, or IMAP adapter is implemented in this rung.** All existing demo features remain available.
+
+## Field Connections R1 · integration contract inspector
+
+Use **Field Connections** in the sidebar to inspect a synthetic PhiID identity export (display-only) and, when developing locally, read the PhiCloud R0 declared service inventory. Neither action authenticates an account or establishes service health. Read the [integration guide](docs/INTEGRATION_R1.md) for setup and security boundaries.
 
 ## Roadmap
 
