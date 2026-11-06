@@ -7,6 +7,7 @@
  */
 import { createServer } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createPhiIdDevAdapter } from './phiid-dev.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -90,6 +91,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
   const clientId = env.GOOGLE_CLIENT_ID || '';
   const clientSecret = env.GOOGLE_CLIENT_SECRET || '';
   const ready = Boolean(clientId && clientSecret);
+  const phiidDev = createPhiIdDevAdapter({ env });
   const oauthPending = new Map();
   const sessions = new Map();
   const startLimits = new Map();
@@ -146,6 +148,8 @@ export function createBridge({ env = process.env, fetchImpl = fetch } = {}) {
     res.setHeader('Cache-Control','no-store');
     const url = new URL(req.url || '/', origin);
     const path = url.pathname;
+    // Independent OIDC test client: no Gmail session/token is shared.
+    if (await phiidDev.handle(req, res, url)) return;
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
       mode: 'experimental-readonly', sameOriginRequired: true,
