@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Cloud, FileUp, Fingerprint, Info, Layers3, LockKeyhole, RefreshCw, ShieldAlert, X } from 'lucide-react';
 import { inspectPhiIdPreviewExport, readLocalPhiCloudRegistry } from './contracts.js';
 import './connections.css';
+import PhiIdDevPanel from './PhiIdDevPanel.jsx';
 
 export default function FieldConnections({onClose}) {
   const [account,setAccount]=useState(null);
@@ -35,7 +36,7 @@ export default function FieldConnections({onClose}) {
   return <div className="field-veil" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <section className="field-window" role="dialog" aria-modal="true" aria-labelledby="field-heading">
       <header className="field-head"><span className="field-brand"><Layers3 size={22}/></span><div><small>Φ ECOSYSTEM · R1</small><h2 id="field-heading">Field Connections</h2></div><span className="field-label">CONTRACT PREVIEW</span><button aria-label="Close Field Connections" onClick={onClose}><X size={20}/></button></header>
-      <div className="field-warning"><Info size={17}/><span>Read-only integration preview. <b>Nothing here signs in a user, connects a real account, confirms service health or grants permissions.</b></span></div>
+      <div className="field-warning"><Info size={17}/><span>The public integration preview is non-authenticating. The optional localhost PhiID lab below can verify a development identity, but <b>it grants no mail, cloud, or PhiOS permissions.</b></span></div>
       <div className="field-columns">
         <section className="field-card">
           <div className="field-card-head"><span className="field-card-icon"><Fingerprint size={21}/></span><div><strong>PhiID</strong><small>phi-account/0.1 · identity metadata</small></div></div>
@@ -48,6 +49,7 @@ export default function FieldConnections({onClose}) {
             <dl><dt>Display name</dt><dd>{account.preferredUsername}</dd><dt>Issuer, unverified</dt><dd>{account.issuer}</dd><dt>Subject, unverified</dt><dd>{account.subject}</dd><dt>Authenticated</dt><dd>No</dd><dt>Permissions</dt><dd>None</dd></dl>
             <button className="field-clear" onClick={()=>setAccount(null)}>Clear from memory</button>
           </div>}
+          {import.meta.env.DEV&&<PhiIdDevPanel/>}
           <a href="https://github.com/MichaelWave369/PhiID" target="_blank" rel="noopener noreferrer">PhiID source and export instructions</a>
         </section>
         <section className="field-card">
