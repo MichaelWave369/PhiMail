@@ -16,6 +16,9 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_URL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const SESSION_LIFETIME_MS = 8 * 60 * 60 * 1000;
 const OAUTH_LIFETIME_MS = 10 * 60 * 1000;
+const MAX_PROVIDER_BYTES = 1024 * 1024;
+const MAX_SESSION_COUNT = 128;
+const MAX_MAIL_CALLS_PER_MINUTE = 30;
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 
 function encode64url(bytes) { return Buffer.from(bytes).toString('base64url'); }
@@ -26,10 +29,20 @@ function compareSecret(a, b) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 function parseCookies(raw = '') {
-  return Object.fromEntries(raw.split(';').map(item => {
+  // Duplicate cookie names can be sent when old and new Path attributes coexist.
+  // Refuse ambiguous sessions rather than silently choosing an attacker's value.
+  const result = Object.create(null), seen = new Set(), duplicates = new Set();
+  for (const item of String(raw).slice(0, 8192).split(';')) {
     const index = item.indexOf('=');
-    return index < 0 ? [] : [item.slice(0, index).trim(), item.slice(index + 1).trim()];
-  }).filter(item => item.length === 2));
+    if (index < 0) continue;
+    const name = item.slice(0,index).trim(), value = item.slice(index+1).trim();
+    if (!['pm_session','pm_oauth','pm_google'].includes(name)) continue;
+    if (seen.has(name)) { duplicates.add(name); continue; }
+    seen.add(name);
+    if (/^[A-Za-z0-9_-]{20,100}$/.test(value)) result[name] = value;
+  }
+  for (const name of duplicates) delete result[name];
+  return result;
 }
 function json(res, status, value, extra = {}) {
   res.writeHead(status, { ...JSON_HEADERS, ...extra });
@@ -43,31 +56,43 @@ function headersOf(payload) {
   return Object.fromEntries((payload?.headers || []).filter(entry => typeof entry?.name === 'string').map(item => [item.name.toLowerCase(), String(item.value || '')]));
 }
 function readableBody(payload) {
-  if (!payload || typeof payload !== 'object') return '';
-  if (payload.mimeType === 'text/plain' && typeof payload.body?.data === 'string') {
-    try { return Buffer.from(payload.body.data, 'base64url').toString('utf8').slice(0, 100000); }
-    catch { return ''; }
+  // Gmail MIME parts can be attacker-controlled. Bound recursion, fanout and decoding.
+  let visited = 0;
+  function visit(part, depth) {
+    if (!part || typeof part !== 'object' || depth > 12 || ++visited > 150) return '';
+    if (part.mimeType === 'text/plain' && typeof part.body?.data === 'string') {
+      const data = part.body.data;
+      if (data.length > 270_000 || !/^[A-Za-z0-9_-]*={0,2}$/.test(data)) return '';
+      try { return Buffer.from(data, 'base64url').toString('utf8').slice(0, 100_000); }
+      catch { return ''; }
+    }
+    if (!Array.isArray(part.parts)) return '';
+    for (const child of part.parts.slice(0, 30)) {
+      const found = visit(child, depth+1);
+      if (found) return found;
+    }
+    return '';
   }
-  for (const part of payload.parts || []) {
-    const candidate = readableBody(part);
-    if (candidate) return candidate;
-  }
-  return '';
+  return visit(payload,0);
 }
 function gmailSummary(record, email) {
+  if (!record || typeof record !== 'object' || !/^[a-zA-Z0-9_-]{1,128}$/.test(record.id || '')) {
+    throw Object.assign(new Error('Invalid Gmail record'),{status:502});
+  }
   const headers = headersOf(record.payload);
-  const sender = headers.from || '(Unknown sender)';
-  const internalDate = Number(record.internalDate);
-  const date = Number.isFinite(internalDate) && internalDate > 0 ? new Date(internalDate).toISOString() : new Date(0).toISOString();
+  const sender = (headers.from || '(Unknown sender)').slice(0, 320);
+  const time = Number(record.internalDate);
+  const validTime = Number.isFinite(time) && time > 0 && time <= 8.64e15;
+  const date = validTime ? new Date(time).toISOString() : new Date(0).toISOString();
   return {
     id: record.id,
-    threadId: record.threadId || null,
+    threadId: typeof record.threadId === 'string' ? record.threadId.slice(0, 128) : null,
     from: sender,
     email: sender,
-    to: headers.to || email,
-    subject: headers.subject || '(No subject)',
+    to: String(headers.to || email).slice(0, 320),
+    subject: String(headers.subject || '(No subject)').slice(0, 500),
     date,
-    preview: record.snippet || '',
+    preview: typeof record.snippet === 'string' ? record.snippet.slice(0,1000) : '',
     unread: Array.isArray(record.labelIds) && record.labelIds.includes('UNREAD'),
     starred: Array.isArray(record.labelIds) && record.labelIds.includes('STARRED'),
     labels: [],
@@ -95,6 +120,9 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   const phiidLab = createPhiIdLab({env,provider:identityProvider});
   const oauthPending = new Map();
   const sessions = new Map();
+  // Rotation handles are NOT Gmail session credentials and are scoped only
+  // to the Google callback path; the bearer session stays scoped to /api.
+  const rotations = new Map();
   const startLimits = new Map();
 
   function cookie(name, value, maxAge, path) {
@@ -104,6 +132,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const now = Date.now();
     for (const [key, entry] of oauthPending) if (entry.expires < now) oauthPending.delete(key);
     for (const [key, entry] of sessions) if (entry.expires < now) sessions.delete(key);
+    for (const [handle, sid] of rotations) if (!sessions.has(sid)) rotations.delete(handle);
     for (const [key, entry] of startLimits) if (entry.until < now) startLimits.delete(key);
   }
   function validateOrigin(req) {
@@ -113,14 +142,27 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const sid = parseCookies(req.headers.cookie).pm_session;
     return sid ? sessions.get(sid) : undefined;
   }
-  async function requestProvider(url, options = {}) {
+  async function requestProvider(url, options = {}, maxBytes = MAX_PROVIDER_BYTES) {
     const response = await fetchImpl(url, { ...options, signal: AbortSignal.timeout(12000) });
     if (!response.ok) {
       const error = new Error(response.status === 429 ? 'Provider rate limit reached' : 'Provider request failed');
       error.status = response.status === 429 ? 429 : 502;
       throw error;
     }
-    return response.json();
+    const advertised = response.headers?.get?.('content-length');
+    if (advertised && Number(advertised) > maxBytes) {
+      throw Object.assign(new Error('Provider response exceeded size limit'), {status:502});
+    }
+    let size = 0;
+    const parts = [];
+    if (!response.body) throw Object.assign(new Error('Empty provider response'),{status:502});
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      if (size > maxBytes) throw Object.assign(new Error('Provider response exceeded size limit'),{status:502});
+      parts.push(Buffer.from(chunk));
+    }
+    try { return JSON.parse(Buffer.concat(parts).toString('utf8')); }
+    catch { throw Object.assign(new Error('Invalid provider JSON'),{status:502}); }
   }
   async function accessToken(session) {
     if (session.accessExpires > Date.now() + 30_000) return session.accessToken;
@@ -133,15 +175,32 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: session.refreshToken, grant_type: 'refresh_token' })
-    });
-    if (!data.access_token) throw new Error('Provider did not return a valid access token');
+    }, 64_000);
+    if (typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 8192) {
+      throw Object.assign(new Error('Provider did not return a valid access token'),{status:502});
+    }
     session.accessToken = data.access_token;
     session.accessExpires = Date.now() + Math.max(60, Number(data.expires_in) || 3600) * 1000;
     return session.accessToken;
   }
-  async function gmailGet(session, path) {
+  async function gmailGet(session, path, maxBytes = 256_000) {
     const token = await accessToken(session);
-    return requestProvider(GMAIL_URL + path, { headers: { Authorization: 'Bearer ' + token } });
+    return requestProvider(GMAIL_URL + path, { headers: { Authorization: 'Bearer ' + token } }, maxBytes);
+  }
+  async function runLimitedMail(session, res, operation) {
+    const now = Date.now();
+    if (!session.mailBudget || now - session.mailBudget.started >= 60_000) {
+      session.mailBudget = {started:now,count:0,active:0};
+    }
+    const budget = session.mailBudget;
+    if (budget.count >= MAX_MAIL_CALLS_PER_MINUTE || budget.active >= 2) {
+      json(res,429,{error:'Local mailbox request limit reached. Retry shortly.'});
+      return;
+    }
+    budget.count += 1;
+    budget.active += 1;
+    try { await operation(); }
+    finally { budget.active -= 1; }
   }
   const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
 
@@ -179,32 +238,54 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     }
 
     if (req.method === 'GET' && path === '/auth/google/callback') {
+      if (String(req.url || '').length > 8192) return json(res,400,{error:'Invalid OAuth callback'});
       const pendingId = parseCookies(req.headers.cookie).pm_oauth;
       const pending = pendingId ? oauthPending.get(pendingId) : undefined;
       if (pendingId) oauthPending.delete(pendingId);
       const cleared = cookie('pm_oauth', '', 0, '/auth/google');
-      if (!pending || pending.expires < Date.now() || !compareSecret(pending.state, url.searchParams.get('state')))
+      if (!pending || pending.expires < Date.now() ||
+          url.searchParams.getAll('state').length !== 1 ||
+          !compareSecret(pending.state, url.searchParams.get('state')))
         return json(res, 400, { error: 'Invalid or expired OAuth state' }, { 'Set-Cookie': cleared });
       if (url.searchParams.has('error')) return redirect(res, origin + '/?phimail=denied', [cleared]);
       const code = url.searchParams.get('code');
-      if (!code || code.length > 4096) return json(res, 400, { error: 'Missing or invalid authorization code' }, { 'Set-Cookie': cleared });
+      if (!code || code.length > 4096 || url.searchParams.getAll('code').length !== 1)
+        return json(res, 400, { error: 'Missing or invalid authorization code' }, { 'Set-Cookie': cleared });
       const token = await requestProvider(TOKEN_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           code, client_id: clientId, client_secret: clientSecret, redirect_uri: callback,
           code_verifier: pending.verifier, grant_type: 'authorization_code'
         })
-      });
-      if (!token.access_token || !token.expires_in) return json(res, 502, { error: 'Provider did not supply a usable access token' }, { 'Set-Cookie': cleared });
-      const profile = await requestProvider(GMAIL_URL + '/profile', { headers: { Authorization: 'Bearer ' + token.access_token } });
+      }, 64_000);
+      if (typeof token.access_token !== 'string' || !token.access_token || token.access_token.length > 8192 ||
+          !Number.isFinite(Number(token.expires_in)) || Number(token.expires_in) <= 0 ||
+          (token.refresh_token && (typeof token.refresh_token !== 'string' || token.refresh_token.length > 8192))) {
+        return json(res,502,{error:'Provider did not supply usable OAuth tokens'},{'Set-Cookie':cleared});
+      }
+      const profile = await requestProvider(GMAIL_URL + '/profile', { headers: { Authorization: 'Bearer ' + token.access_token } }, 64_000);
       if (typeof profile.emailAddress !== 'string' || !profile.emailAddress.includes('@'))
         return json(res, 502, { error: 'Provider did not return an email identity' }, { 'Set-Cookie': cleared });
-      const oldSid = parseCookies(req.headers.cookie).pm_session;
-      if (oldSid) sessions.delete(oldSid);
-      const sid = randomToken();
-      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), accessToken: token.access_token, refreshToken: token.refresh_token || null,
+      const previousHandle = parseCookies(req.headers.cookie).pm_google;
+      const oldSid = previousHandle ? rotations.get(previousHandle) : undefined;
+      if (previousHandle) rotations.delete(previousHandle);
+      if (oldSid) {
+        const previousSession = sessions.get(oldSid);
+        if (previousSession?.rotation === previousHandle) sessions.delete(oldSid);
+      }
+      if (sessions.size >= MAX_SESSION_COUNT) {
+        return json(res,429,{error:'Too many experimental sessions. Restart the local bridge.'},{'Set-Cookie':cleared});
+      }
+      const sid = randomToken(), rotation = randomToken();
+      sessions.set(sid, { email: profile.emailAddress, sessionMarker: randomToken(), rotation, accessToken: token.access_token, refreshToken: token.refresh_token || null,
         accessExpires: Date.now() + Number(token.expires_in) * 1000, expires: Date.now() + SESSION_LIFETIME_MS });
-      return redirect(res, origin + '/?phimail=connected', [cleared, cookie('pm_session', sid, 8*60*60, '/api')]);
+      rotations.set(rotation,sid);
+      // Important: cookies are scoped by host, not port. Never put the Gmail
+      // bearer cookie at / on 127.0.0.1: it would reach local Keycloak too.
+      return redirect(res, origin + '/?phimail=connected', [
+        cleared, cookie('pm_session','',0,'/'), cookie('pm_session', sid, 8*60*60, '/api'),
+        cookie('pm_google', rotation, 8*60*60, '/auth/google')
+      ]);
     }
 
     if (req.method === 'GET' && path === '/api/session') {
@@ -215,26 +296,44 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     if (req.method === 'POST' && path === '/api/session/disconnect') {
       if (!validateOrigin(req)) return json(res, 403, { error: 'Origin mismatch' });
       const sid = parseCookies(req.headers.cookie).pm_session;
-      if (sid) sessions.delete(sid);
-      return json(res, 200, { connected: false }, { 'Set-Cookie': cookie('pm_session', '', 0, '/api') });
+      if (sid) {
+        const existing = sessions.get(sid);
+        if (existing?.rotation) rotations.delete(existing.rotation);
+        sessions.delete(sid);
+      }
+      return json(res, 200, { connected: false }, {
+        'Set-Cookie': [
+          cookie('pm_session','',0,'/api'),cookie('pm_session','',0,'/'),
+          cookie('pm_google','',0,'/auth/google')
+        ]
+      });
     }
 
     if (req.method === 'GET' && (path === '/api/mail/messages' || path.startsWith('/api/mail/messages/'))) {
       const session = sessionFor(req);
       if (!session) return json(res, 401, { error: 'Connect an account first' });
-      if (path === '/api/mail/messages') {
-        const requested = Number(url.searchParams.get('limit') || 15);
-        const limit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, 20)) : 15;
-        const list = await gmailGet(session, '/messages?labelIds=INBOX&maxResults=' + limit);
-        const ids = Array.isArray(list.messages) ? list.messages.slice(0,limit) : [];
-        const summaries = await Promise.all(ids.map(item => gmailGet(session,'/messages/'+encodeURIComponent(item.id)+'?format=metadata')));
-        return json(res, 200, { messages: summaries.map(record => gmailSummary(record,session.email)), nextPageAvailable: Boolean(list.nextPageToken) });
-      }
-      const id = path.slice('/api/mail/messages/'.length);
-      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return json(res, 400, { error: 'Invalid message identifier' });
-      const record = await gmailGet(session, '/messages/' + encodeURIComponent(id) + '?format=full');
-      const message = gmailSummary(record,session.email);
-      return json(res, 200, { ...message, body: readableBody(record.payload) || '[No plain-text body found. HTML is deliberately not rendered in this pilot.]' });
+      return runLimitedMail(session,res,async()=>{
+        if (path === '/api/mail/messages') {
+          const requested = Number(url.searchParams.get('limit') || 15);
+          const limit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, 20)) : 15;
+          const list = await gmailGet(session, '/messages?labelIds=INBOX&maxResults=' + limit);
+          const ids = Array.isArray(list.messages) ?
+            list.messages.slice(0,limit).filter(x=>typeof x?.id==='string' && /^[a-zA-Z0-9_-]{1,128}$/.test(x.id)) : [];
+          const summaries = [];
+          // Small batches avoid hitting the provider with 20 simultaneous calls.
+          for(let i=0;i<ids.length;i+=5) {
+            const batch = await Promise.all(ids.slice(i,i+5).map(item=>
+              gmailGet(session,'/messages/'+encodeURIComponent(item.id)+'?format=metadata')));
+            summaries.push(...batch.map(record=>gmailSummary(record,session.email)));
+          }
+          return json(res, 200, { messages: summaries, nextPageAvailable: Boolean(list.nextPageToken) });
+        }
+        const id = path.slice('/api/mail/messages/'.length);
+        if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return json(res, 400, { error: 'Invalid message identifier' });
+        const record = await gmailGet(session, '/messages/' + encodeURIComponent(id) + '?format=full', MAX_PROVIDER_BYTES);
+        const message = gmailSummary(record,session.email);
+        return json(res, 200, { ...message, body: readableBody(record.payload) || '[No plain-text body found. HTML is deliberately not rendered in this pilot.]' });
+      });
     }
     return json(res, 404, { error: 'Not found' });
   }

@@ -40,6 +40,10 @@ The development-only Field Connections panel can sign into the **same local Keyc
 
 Field Connections now includes a local-only, expiring **consent-to-review** flow for the current verified PhiID test identity and separately connected Gmail account. It requires deliberate acknowledgment and allows immediate clearing. This is **not** permanent account linking, mailbox authorization or a PhiCloud grant. See [R3 setup](docs/MAILBOX_REVIEW_R3.md).
 
+## R4: Gmail bridge security hardening
+
+The optional local Gmail bridge now rotates its sessions across OAuth reconnects, limits provider response size and MIME traversal, rejects ambiguous cookies, and throttles mail API calls. The public demo remains separate and no mailbox is linked to PhiID. See [R4 technical changes and remaining limitations](docs/BRIDGE_HARDENING_R4.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

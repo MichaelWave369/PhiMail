@@ -67,3 +67,7 @@ A forthcoming PhiCloud identity service can provide the user session layer. **Ph
 ## PhiID R2 optional local identity experiment
 
 To test independent PhiID sign-in from the same PhiMail bridge, set PHIMAIL_LOCAL_PHIID=1 and BRIDGE_PUBLIC_ORIGIN=http://127.0.0.1:5173 in gitignored .env.local. This requires a separate PhiMail OIDC client in PhiID's local Keycloak realm. Consult [R2 setup](LOCAL_PHIID_R2.md). Identity sessions do **not** link, authorize, or modify existing Gmail sessions. If testing Google OAuth too, register the matching 127.0.0.1 Gmail callback in Google Cloud; the redirect URI must match exactly.
+
+## R4 security and reliability changes
+
+The localhost bridge now validates one-time OAuth callback parameters, rotates the root-path Gmail cookie on reconnection, clears old cookie paths, limits provider body sizes and MIME traversal, caps sessions and request rates, and binds the command-line server to loopback only. See [R4 hardening and test guide](BRIDGE_HARDENING_R4.md). These controls do **not** make the bridge production-safe or link Gmail to PhiID.
