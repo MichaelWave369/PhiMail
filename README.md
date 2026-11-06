@@ -1,31 +1,33 @@
 # Φ PhiMail
 
-**Sovereign communication for the PhiOS ecosystem.**
+**Communication without captivity.** A new open-source mail experience for the PhiOS ecosystem.
 
-PhiMail is an open-source, provider-independent email client and a future path to self-hosted mail infrastructure. It will launch as a privacy-first web experience, then add authenticated email adapters and, later, optional sovereign hosting.
+## Current milestone: PhiMail Client v0.1
 
-> **Current status:** initial scaffolding. No real mailbox connection, incoming synchronization, or email delivery is claimed yet.
+The first release is an intentionally local browser demo. It contains a responsive inbox, search, starred messages, read/unread controls, folders, archive/trash, draft composition, replies, forwards, local JSON import/export, and keyboard shortcuts. Synthetic messages live in browser localStorage.
 
-## Principles
+**Important:** This prototype cannot synchronize a real mailbox or deliver email. The demo send action records a local Sent message; it does not transmit it. You can hand off a composed message to your operating system's mail app through a mailto link. localStorage is not encrypted. Do not put private emails or mailbox passwords in the demo.
 
-- **Interoperability:** email should still work with everyone outside PhiOS.
-- **User control:** portable messages, optional local processing, no compulsory third-party AI.
-- **Clear security boundaries:** do not expose mailbox secrets to static browser hosting.
-- **No fake sending:** demo actions stay local and are clearly identified.
-- **Human approval:** any automated drafting or sending must require explicit authorization.
-- **Accessible by default:** keyboard-friendly, responsive, reduced-motion friendly.
+## Run
+
+Requirements: Node.js 22+
+
+1. Clone this repository.
+2. Run npm install.
+3. Run npm run dev.
+4. For checks, run npm test and npm run build.
+
+GitHub Actions verifies pull requests and deploys main to GitHub Pages, provided the repository's Pages source is configured to GitHub Actions.
 
 ## Roadmap
 
-1. Browser-based local demo: inbox, message detail, search, labels, composing, drafts, import/export.
-2. Real account providers: secure OAuth flows for Gmail and Microsoft accounts, and standards-based IMAP/SMTP through a trusted backend.
-3. PhiOS integration, optional local PhiBot assistance, offline sync and migration tools.
-4. Self-hosted delivery: MX, SPF, DKIM, DMARC, MTA-STS, monitoring, antispam, backups, abuse controls.
+- **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
+- **Rung 2 | Bridge:** secure, server-side OAuth/Gmail, Microsoft Graph, and IMAP/SMTP adapters; true inbound/outbound mail, attachments, sync, strong HTML sanitization.
+- **Rung 3 | Intelligence:** optional on-device PhiBot assistance with human approval for external actions; message portability and open formats.
+- **Rung 4 | Sovereign:** optional mail hosting, MX/DNS configuration, SPF, DKIM, DMARC, TLS, abuse mitigation, reputation management, encrypted backups, observability.
 
-## Development
+## Philosophy
 
-The first app and build instructions are being prepared as a feature pull request.
+Interoperable. Portable. Transparent. Privacy-minded. Optional intelligence. No mandatory ecosystem lock-in.
 
-**License:** MIT (planned).
-
-Part of [PhiOS](https://phi-field.com).
+MIT licensed. Part of [PhiOS](https://phi-field.com).
