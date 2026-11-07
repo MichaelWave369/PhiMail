@@ -48,6 +48,10 @@ The optional local Gmail bridge now rotates its sessions across OAuth reconnects
 
 The experimental bridge now uses a **provider-neutral mailbox contract**: Gmail is the sole operational read-only adapter, while Outlook and IMAP remain clearly marked *not implemented*. This centralizes message validation and read-only capabilities without letting a login or untrusted provider response grant permissions. See [R5 mailbox adapter contract](docs/MAILBOX_CORE_R5.md). No sending, provider linking, hosted mail, or public multi-user service was added.
 
+## R6: Local-only Outlook Microsoft Graph read-only pilot
+
+PhiMail now has an optional **Outlook personal-account reader** using independent Microsoft OAuth + PKCE and the existing universal mailbox engine. Gmail and Outlook sessions are separate; IMAP is still not implemented. The pilot needs your own Microsoft Entra app registration and a manual real-account smoke test. Never expose its HTTP backend publicly. See [Outlook R6 setup, permissions and limits](docs/OUTLOOK_R6.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
