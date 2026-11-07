@@ -87,3 +87,7 @@ The developer-only bridge now exposes a non-authorizing `/api/accounts` inventor
 ## R9 provider-session and refresh-token safety
 
 The local bridge uses a session-keyed mail request gate that retains in-flight counts across minute boundaries, caps global concurrent provider reads, and coalesces overlapping Gmail or Outlook token refresh requests **within** one provider session. Sensitive GET routes reject explicitly mismatched Origin and cross-site Fetch Metadata. These features do not establish production tenancy or persist tokens; see [R9 details](SESSION_SAFETY_R9.md).
+
+## R10 encryption envelope foundation
+
+A separate server-only [R10 credential-envelope module](CREDENTIAL_ENVELOPE_R10.md) prepares authenticated AES-256-GCM credential wrapping, revision checks, key rotation and cross-owner mailbox binding. The experimental bridge **does not invoke it yet** and continues holding tokens in volatile memory. There is no credential disk persistence, trusted key service, completed authorization gate or production deployment capability.

@@ -64,6 +64,10 @@ The local Mail providers pilot now shows which of the independently authorized G
 
 The experimental mailbox bridge now preserves active request limits across rate-window rollovers, applies a process-wide concurrency ceiling, and shares one token refresh among concurrent reads of the **same** Gmail or Outlook session. It also rejects explicit cross-origin and cross-site sensitive mailbox reads. No encrypted token vault or hosted multi-user service has been introduced. See [R9 threat model and verification](docs/SESSION_SAFETY_R9.md).
 
+## R10: audited credential envelope foundation (NOT wired to live accounts)
+
+A standalone server-only AES-256-GCM credential-envelope codec now supports per-record random keys/IVs, authenticated owner/provider binding, expiry, revision checks and key rotation through explicit rewrap. **No live OAuth or IMAP secrets are persisted or routed through it yet.** Identity verification, rollback-resistant transactional storage, trusted key custody and mailbox authorization remain separate prerequisites. See [R10 envelope, threat boundaries and tests](docs/CREDENTIAL_ENVELOPE_R10.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
