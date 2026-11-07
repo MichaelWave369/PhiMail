@@ -68,6 +68,10 @@ The experimental mailbox bridge now preserves active request limits across rate-
 
 A standalone server-only AES-256-GCM credential-envelope codec now supports per-record random keys/IVs, authenticated owner/provider binding, expiry, revision checks and key rotation through explicit rewrap. **No live OAuth or IMAP secrets are persisted or routed through it yet.** Identity verification, rollback-resistant transactional storage, trusted key custody and mailbox authorization remain separate prerequisites. See [R10 envelope, threat boundaries and tests](docs/CREDENTIAL_ENVELOPE_R10.md).
 
+## R11: independent owner-to-mailbox grant contract (not live)
+
+A standalone in-memory authorization state machine now requires **separately verified identity and mailbox sessions plus an explicit one-time approval challenge** to issue a narrow, expiring read-only grant. Every check re-verifies both sessions, and grants can be revoked by a verified owner. The three production-grade proof verifiers are intentionally not implemented or wired to live accounts, so this is **not** real account linking or authorization for the existing bridge. See [R11 grant contract, security boundaries and tests](docs/MAILBOX_GRANTS_R11.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
