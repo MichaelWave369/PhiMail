@@ -15,6 +15,7 @@ import { createOutlookReadAdapter } from './providers/outlook.js';
 import { createMicrosoftLab } from './outlook-lab.js';
 import { createImapReadAdapter } from './providers/imap.js';
 import { createImapLab } from './imap-lab.js';
+import { createMailRequestGate,createSessionSingleFlight } from './mail-gate.js';
 import { localAccountSnapshot } from './local-accounts.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -77,6 +78,8 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   const phiidLab = createPhiIdLab({env,provider:identityProvider});
   const oauthPending = new Map();
   const sessions = new Map();
+  const mailGate=createMailRequestGate({maxPerWindow:MAX_MAIL_CALLS_PER_MINUTE});
+  const refreshSingleFlight=createSessionSingleFlight();
   // Rotation handles are NOT Gmail session credentials and are scoped only
   // to the Google callback path; the bearer session stays scoped to /api.
   const rotations = new Map();
@@ -123,37 +126,54 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   }
   async function accessToken(session) {
     if (session.accessExpires > Date.now() + 30_000) return session.accessToken;
-    if (!session.refreshToken) {
-      const error = new Error('Gmail session expired, please reconnect');
-      error.status = 401;
-      throw error;
-    }
-    const data = await requestProvider(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: session.refreshToken, grant_type: 'refresh_token' })
-    }, 64_000);
-    if (typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 8192) {
-      throw Object.assign(new Error('Provider did not return a valid access token'),{status:502});
-    }
-    session.accessToken = data.access_token;
-    session.accessExpires = Date.now() + Math.max(60, Number(data.expires_in) || 3600) * 1000;
-    return session.accessToken;
+    return refreshSingleFlight(session,async()=>{
+      // Recheck INSIDE the same-session gate: another reader may have
+      // already completed the refresh by the time this operation starts.
+      if(session.accessExpires>Date.now()+30_000)return session.accessToken;
+      if (!session.refreshToken) {
+        const error = new Error('Gmail session expired, please reconnect');
+        error.status = 401;
+        throw error;
+      }
+      const data = await requestProvider(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId, client_secret: clientSecret,
+          refresh_token: session.refreshToken, grant_type: 'refresh_token'
+        })
+      }, 64_000);
+      if (typeof data.access_token !== 'string' || !data.access_token ||
+          data.access_token.length > 8192) {
+        throw Object.assign(new Error('Provider did not return a valid access token'),{status:502});
+      }
+      // If the provider rotates the refresh credential, never discard it.
+      if(data.refresh_token!==undefined &&
+         (typeof data.refresh_token!=='string' || !data.refresh_token ||
+          data.refresh_token.length>8192)){
+        throw Object.assign(new Error('Provider returned an invalid refresh token'),{status:502});
+      }
+      session.accessToken = data.access_token;
+      if(data.refresh_token)session.refreshToken=data.refresh_token;
+      session.accessExpires = Date.now() + Math.max(60, Number(data.expires_in) || 3600) * 1000;
+      return session.accessToken;
+    });
   }
   async function runLimitedMail(session, res, operation) {
-    const now = Date.now();
-    if (!session.mailBudget || now - session.mailBudget.started >= 60_000) {
-      session.mailBudget = {started:now,count:0,active:0};
-    }
-    const budget = session.mailBudget;
-    if (budget.count >= MAX_MAIL_CALLS_PER_MINUTE || budget.active >= 2) {
+    const release=mailGate.acquire(session);
+    if(!release){
       json(res,429,{error:'Local mailbox request limit reached. Retry shortly.'});
       return;
     }
-    budget.count += 1;
-    budget.active += 1;
     try { await operation(); }
-    finally { budget.active -= 1; }
+    finally { release(); }
+  }
+  // The frontend is same-origin through Vite. Reject explicit cross-site
+  // fetch metadata and Origin mismatches even on supposedly read-only URLs.
+  function acceptSensitiveRead(req) {
+    const site=req.headers['sec-fetch-site'];
+    return (!site||site==='same-origin'||site==='none')&&
+      (!req.headers.origin||req.headers.origin===origin);
   }
   const gmailAdapter=createGmailReadAdapter({
     requestProvider,accessToken,ready
@@ -341,6 +361,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     }
 
     if (req.method === 'GET' && path === '/api/session') {
+      if(!acceptSensitiveRead(req))return json(res,403,{error:'same_origin_mail_access_required'});
       const provider=providerName(url);
       if(!provider)return json(res,400,{error:'invalid_provider_selection'});
       const session=providerSession(req,provider);
@@ -367,6 +388,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     }
 
     if (req.method === 'GET' && (path === '/api/mail/messages' || path.startsWith('/api/mail/messages/'))) {
+      if(!acceptSensitiveRead(req))return json(res,403,{error:'same_origin_mail_access_required'});
       const provider=providerName(url);
       if(!provider)return json(res,400,{error:'invalid_provider_selection'});
       const session=providerSession(req,provider);

@@ -83,3 +83,7 @@ The same provider gateway now accepts an opt-in, **single server-configured** TL
 ## R8 local account control
 
 The developer-only bridge now exposes a non-authorizing `/api/accounts` inventory and `POST /api/accounts/disconnect-all` action that clears the **current browser's** Gmail, Outlook and IMAP server sessions only. It does not sign out PhiID or revoke remote provider credentials. In-flight mailbox data is rechecked against the session after each read. See [R8 contract and tests](LOCAL_ACCOUNTS_R8.md). These routes require the exact `http://127.0.0.1:5173` loopback origin and remain disabled in production.
+
+## R9 provider-session and refresh-token safety
+
+The local bridge uses a session-keyed mail request gate that retains in-flight counts across minute boundaries, caps global concurrent provider reads, and coalesces overlapping Gmail or Outlook token refresh requests **within** one provider session. Sensitive GET routes reject explicitly mismatched Origin and cross-site Fetch Metadata. These features do not establish production tenancy or persist tokens; see [R9 details](SESSION_SAFETY_R9.md).
