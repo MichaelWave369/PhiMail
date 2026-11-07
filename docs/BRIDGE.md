@@ -91,3 +91,7 @@ The local bridge uses a session-keyed mail request gate that retains in-flight c
 ## R10 encryption envelope foundation
 
 A separate server-only [R10 credential-envelope module](CREDENTIAL_ENVELOPE_R10.md) prepares authenticated AES-256-GCM credential wrapping, revision checks, key rotation and cross-owner mailbox binding. The experimental bridge **does not invoke it yet** and continues holding tokens in volatile memory. There is no credential disk persistence, trusted key service, completed authorization gate or production deployment capability.
+
+## R11 verification-gated owner-to-mailbox grant contract
+
+The separately testable [R11 authorization contract](MAILBOX_GRANTS_R11.md) defines one-time approval intents, owner+provider-session binding, read-only capabilities, expiry and owner revocation. It requires three independently trusted backend verifiers, which **have not yet been implemented**. The local provider bridge does not call this authority, and no owner-linking HTTP API, persistent record or new mailbox permission is introduced.
