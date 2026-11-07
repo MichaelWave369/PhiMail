@@ -43,7 +43,7 @@ export default function App(){
   const [compose,setCompose]=useState(false);
   const [draft,setDraft]=useState(BLANK);
   const [dialog,setDialog]=useState('');
-  const [bridgeOpen,setBridgeOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phimail'));
+  const [bridgeOpen,setBridgeOpen]=useState(()=>import.meta.env.DEV && (new URLSearchParams(window.location.search).has('phimail')||new URLSearchParams(window.location.search).has('outlook')));
   const [fieldConnectionsOpen,setFieldConnectionsOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phiid'));
   const [toast,setToast]=useState('');
   const [mobileMenu,setMobileMenu]=useState(false);
@@ -161,7 +161,7 @@ export default function App(){
     {mobileMenu&&<button className="mobile-scrim" onClick={()=>setMobileMenu(false)} aria-label="Dismiss menu"/>}
 
     <main className="main">
-      <header className="topbar"><div className="topbar-location"><button className="icon-button mobile-menu" onClick={()=>setMobileMenu(true)} aria-label="Open menu"><Menu size={20}/></button><span>PHIOS / COMMUNICATIONS</span><span className="crumb">/</span><b>PhiMail</b></div><div className="topbar-side"><span className="demo-status"><i/>LOCAL DEMO</span>{import.meta.env.DEV&&<button className="pilot-open-button" onClick={()=>setBridgeOpen(true)}><Mail size={15}/> Gmail pilot</button>}<button className="profile-icon" onClick={()=>setDialog('accounts')} aria-label="Account details">Φ</button></div></header>
+      <header className="topbar"><div className="topbar-location"><button className="icon-button mobile-menu" onClick={()=>setMobileMenu(true)} aria-label="Open menu"><Menu size={20}/></button><span>PHIOS / COMMUNICATIONS</span><span className="crumb">/</span><b>PhiMail</b></div><div className="topbar-side"><span className="demo-status"><i/>LOCAL DEMO</span>{import.meta.env.DEV&&<button className="pilot-open-button" onClick={()=>setBridgeOpen(true)}><Mail size={15}/> Mail providers</button>}<button className="profile-icon" onClick={()=>setDialog('accounts')} aria-label="Account details">Φ</button></div></header>
       <div className="page-heading"><div><div className="overline"><i/>YOUR MESSAGE SPACE</div><h1>{NAV.find(x=>x.id===folder)?.title}<span className="accent-period">.</span></h1><p>Less noise. More meaning. Your space to connect.</p></div><div className="heading-right"><span><strong>{visible.length}</strong> messages</span><button className="outline-button" onClick={()=>setDialog('accounts')}><Plus size={17}/> Add account</button></div></div>
 
       <div className="mail-grid">
@@ -211,7 +211,7 @@ export default function App(){
         <div className="provider"><span>G</span><div><strong>Gmail</strong><small>OAuth authorization</small></div><b>PLANNED</b></div>
         <div className="provider"><span>M</span><div><strong>Microsoft Outlook</strong><small>Microsoft Graph mail access</small></div><b>PLANNED</b></div>
         <div className="provider"><span>Φ</span><div><strong>Independent mail providers</strong><small>IMAP / SMTP through a secure bridge</small></div><b>PLANNED</b></div>
-        <div className="dialog-note"><ShieldCheck size={17}/> Never paste mailbox passwords into a public demo.</div>{import.meta.env.DEV&&<button className="pilot-dialog-button" onClick={()=>{setDialog('');setBridgeOpen(true);}}><Mail size={17}/> Open the experimental Gmail read-only pilot</button>}
+        <div className="dialog-note"><ShieldCheck size={17}/> Never paste mailbox passwords into a public demo.</div>{import.meta.env.DEV&&<button className="pilot-dialog-button" onClick={()=>{setDialog('');setBridgeOpen(true);}}><Mail size={17}/> Open the experimental read-only mail providers</button>}
       </>:<><p>Demo messages use <strong>unencrypted localStorage</strong> in this browser. Do not import sensitive real emails or store credentials here.</p>
         <div className="settings-list"><button onClick={exportMessages}><ArrowDownToLine size={19}/><span><strong>Export demo mailbox</strong><small>Download your sample messages as JSON</small></span></button><button onClick={()=>importRef.current?.click()}><FileUp size={19}/><span><strong>Import demo JSON</strong><small>Replace messages from a previous demo export</small></span></button><input ref={importRef} hidden type="file" accept=".json,application/json" onChange={importMessages}/><button onClick={reset}><RotateCcw size={19}/><span><strong>Reset sample mailbox</strong><small>Discard local changes</small></span></button></div>
         <div className="dialog-note"><LockKeyhole size={17}/> Encrypted, authenticated storage will come with real accounts.</div>

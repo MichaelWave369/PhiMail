@@ -71,3 +71,7 @@ To test independent PhiID sign-in from the same PhiMail bridge, set PHIMAIL_LOCA
 ## R4 security and reliability changes
 
 The localhost bridge now validates one-time OAuth callback parameters, rotates the root-path Gmail cookie on reconnection, clears old cookie paths, limits provider body sizes and MIME traversal, caps sessions and request rates, and binds the command-line server to loopback only. See [R4 hardening and test guide](BRIDGE_HARDENING_R4.md). These controls do **not** make the bridge production-safe or link Gmail to PhiID.
+
+## R6 Microsoft Outlook read-only pilot
+
+PhiMail also supports an optional separate Microsoft personal-account OAuth + Graph adapter in local development. This has a different browser cookie and server session from Gmail, requests only delegated User.Read and Mail.Read (plus offline_access) and never links to PhiID. Setup requires a Microsoft Entra app registration and private credentials; see [R6 Outlook guide](OUTLOOK_R6.md). No sending or public deployment is provided.

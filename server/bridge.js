@@ -11,6 +11,8 @@ import { createPhiIdLab } from './phiid-lab.js';
 import { createMailboxReview } from './mailbox-review.js';
 import { createMailboxGateway } from './mailbox-core.js';
 import { createGmailReadAdapter } from './providers/gmail.js';
+import { createOutlookReadAdapter } from './providers/outlook.js';
+import { createMicrosoftLab } from './outlook-lab.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -153,8 +155,36 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   const gmailAdapter=createGmailReadAdapter({
     requestProvider,accessToken,ready
   });
-  const mailboxes=createMailboxGateway({adapters:[gmailAdapter]});
+  // Each OAuth provider owns its own cookie and server-only session store.
+  // Outlook's resource grant cannot authorize Gmail or the PhiID lab.
+  const outlookAdapter=createOutlookReadAdapter({
+    requestProvider,
+    accessToken: session=>microsoftLab.accessToken(session),
+    ready: Boolean(env.MICROSOFT_CLIENT_ID&&env.MICROSOFT_CLIENT_SECRET) &&
+      env.BRIDGE_PUBLIC_ORIGIN==='http://127.0.0.1:5173' &&
+      env.NODE_ENV!=='production',
+  });
+  const microsoftLab=createMicrosoftLab({
+    env,requestProvider,profile:token=>outlookAdapter.profile(token)
+  });
+  const mailboxes=createMailboxGateway({adapters:[gmailAdapter,
+    // Ready is tied to the actual validated OAuth setup; no demo auth bypass.
+    createOutlookReadAdapter({
+      requestProvider,accessToken:session=>microsoftLab.accessToken(session),
+      ready:microsoftLab.configured
+    })
+  ]});
   const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
+  function providerName(url){
+    const requested=url.searchParams.getAll('provider');
+    if(requested.length>1|| !['gmail','outlook'].includes(requested[0]||'gmail')){
+      return null;
+    }
+    return requested[0]||'gmail';
+  }
+  function providerSession(req,provider){
+    return provider==='outlook'?microsoftLab.sessionFor(req):sessionFor(req);
+  }
 
   async function handle(req, res) {
     cleanExpired();
@@ -164,6 +194,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const path = url.pathname;
     // Review runs first because the PhiID lab reserves /api/identity/*.
     if (await mailboxReview.handle(req,res,path,url)) return;
+    if (await microsoftLab.handle(req,res,path,url)) return;
     if (await phiidLab.handle(req,res,path,url)) return;
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
@@ -240,11 +271,20 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     }
 
     if (req.method === 'GET' && path === '/api/session') {
-      const session = sessionFor(req);
-      return json(res, 200, { connected: Boolean(session), provider: session?.provider || null, email: session?.email || null, capabilities: session ? ['read:inbox', 'read:message'] : [] });
+      const provider=providerName(url);
+      if(!provider)return json(res,400,{error:'invalid_provider_selection'});
+      const session=providerSession(req,provider);
+      return json(res, 200, {
+        connected:Boolean(session),provider:session?.provider||null,
+        email:session?.email||null,
+        capabilities:session?['read:inbox','read:message']:[],
+      });
     }
 
     if (req.method === 'POST' && path === '/api/session/disconnect') {
+      const provider=providerName(url);
+      if(!provider)return json(res,400,{error:'invalid_provider_selection'});
+      if(provider==='outlook')return microsoftLab.logout(req,res);
       if (!validateOrigin(req)) return json(res, 403, { error: 'Origin mismatch' });
       const sid = parseCookies(req.headers.cookie).pm_session;
       if (sid) {
@@ -261,7 +301,9 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     }
 
     if (req.method === 'GET' && (path === '/api/mail/messages' || path.startsWith('/api/mail/messages/'))) {
-      const session = sessionFor(req);
+      const provider=providerName(url);
+      if(!provider)return json(res,400,{error:'invalid_provider_selection'});
+      const session=providerSession(req,provider);
       if (!session) return json(res, 401, { error: 'Connect an account first' });
       return runLimitedMail(session,res,async()=>{
         if (path === '/api/mail/messages') {
