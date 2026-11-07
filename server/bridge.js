@@ -13,6 +13,8 @@ import { createMailboxGateway } from './mailbox-core.js';
 import { createGmailReadAdapter } from './providers/gmail.js';
 import { createOutlookReadAdapter } from './providers/outlook.js';
 import { createMicrosoftLab } from './outlook-lab.js';
+import { createImapReadAdapter } from './providers/imap.js';
+import { createImapLab } from './imap-lab.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -58,7 +60,7 @@ function redirect(res, location, cookies = []) {
 /**
  * Inject fetch for isolated OAuth/Gmail test doubles. No external requests in unit tests.
  */
-export function createBridge({ env = process.env, fetchImpl = fetch, identityProvider = null } = {}) {
+export function createBridge({ env = process.env, fetchImpl = fetch, identityProvider = null, imapClientFactory = null } = {}) {
   const configuredOrigin = env.BRIDGE_PUBLIC_ORIGIN || 'http://localhost:5173';
   const frontendOrigin = new URL(configuredOrigin);
   if (frontendOrigin.pathname !== '/' || frontendOrigin.search || frontendOrigin.hash) throw new Error('BRIDGE_PUBLIC_ORIGIN must be an origin only');
@@ -167,23 +169,28 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   const microsoftLab=createMicrosoftLab({
     env,requestProvider,profile:token=>outlookAdapter.profile(token)
   });
-  const mailboxes=createMailboxGateway({adapters:[gmailAdapter,
-    // Ready is tied to the actual validated OAuth setup; no demo auth bypass.
+  const imapAdapter=createImapReadAdapter({
+    env,...(imapClientFactory?{clientFactory:imapClientFactory}:{})
+  });
+  const imapLab=createImapLab({env,adapter:imapAdapter});
+  const mailboxes=createMailboxGateway({adapters:[
+    gmailAdapter,
     createOutlookReadAdapter({
       requestProvider,accessToken:session=>microsoftLab.accessToken(session),
       ready:microsoftLab.configured
-    })
+    }),
+    imapAdapter
   ]});
   const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
   function providerName(url){
     const requested=url.searchParams.getAll('provider');
-    if(requested.length>1|| !['gmail','outlook'].includes(requested[0]||'gmail')){
+    if(requested.length>1|| !['gmail','outlook','imap'].includes(requested[0]||'gmail')){
       return null;
     }
     return requested[0]||'gmail';
   }
   function providerSession(req,provider){
-    return provider==='outlook'?microsoftLab.sessionFor(req):sessionFor(req);
+    return provider==='outlook'?microsoftLab.sessionFor(req):provider==='imap'?imapLab.sessionFor(req):sessionFor(req);
   }
 
   async function handle(req, res) {
@@ -195,6 +202,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     // Review runs first because the PhiID lab reserves /api/identity/*.
     if (await mailboxReview.handle(req,res,path,url)) return;
     if (await microsoftLab.handle(req,res,path,url)) return;
+    if (await imapLab.handle(req,res,path,url)) return;
     if (await phiidLab.handle(req,res,path,url)) return;
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
@@ -285,6 +293,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       const provider=providerName(url);
       if(!provider)return json(res,400,{error:'invalid_provider_selection'});
       if(provider==='outlook')return microsoftLab.logout(req,res);
+      if(provider==='imap')return imapLab.logout(req,res);
       if (!validateOrigin(req)) return json(res, 403, { error: 'Origin mismatch' });
       const sid = parseCookies(req.headers.cookie).pm_session;
       if (sid) {

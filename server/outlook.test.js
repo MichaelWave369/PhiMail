@@ -190,9 +190,12 @@ describe('R6 Outlook Graph read-only laboratory',()=>{
     assert.equal(y.data.email,'gmail-owner@example.test');
     assert.equal(fallback.data.provider,'gmail');
     const bad=await request(base,'/api/session?provider=imap',{cookies:both});
-    assert.equal(bad.status,400);
+    assert.equal(bad.status,200);
+    assert.equal(bad.data.connected,false);
     const bad2=await request(base,'/api/mail/messages?provider=outlook&provider=gmail',{cookies:both});
     assert.equal(bad2.status,400);
+    const unknown=await request(base,'/api/session?provider=smtp',{cookies:both});
+    assert.equal(unknown.status,400);
     const quit=await request(base,'/api/session/disconnect?provider=outlook',{
       method:'POST',cookies:both,headers:{Origin:MICROSOFT_ORIGIN,'X-PhiMail-Action':'disconnect-outlook'}
     });

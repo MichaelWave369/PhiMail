@@ -34,3 +34,7 @@ npm test runs server/mailbox-core.test.js as well as the previous OAuth/Gmail ha
 These are automated tests with mock provider responses, **not proof of live Google OAuth, Microsoft Graph or IMAP access**. No production encryption, multi-tenancy, Gmail verification, remote revocation, cloud hosting, send scopes, background sync or mailbox-to-PhiID binding is introduced.
 
 Related production gates: PhiMail issues #4 and #8.
+
+## R7 IMAP adapter
+
+The third compiled-in adapter now implements optional single-account read-only TLS IMAP using ImapFlow. It is disabled unless explicitly configured by the developer with private server credentials and an independent local unlock. The caller cannot submit IMAP destinations or account passwords through the browser. See [IMAP R7](IMAP_R7.md). No send, delete, folder sync, persistent credentials or production authorization was added.

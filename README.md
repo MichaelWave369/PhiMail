@@ -52,6 +52,10 @@ The experimental bridge now uses a **provider-neutral mailbox contract**: Gmail 
 
 PhiMail now has an optional **Outlook personal-account reader** using independent Microsoft OAuth + PKCE and the existing universal mailbox engine. Gmail and Outlook sessions are separate; IMAP is still not implemented. The pilot needs your own Microsoft Entra app registration and a manual real-account smoke test. Never expose its HTTP backend publicly. See [Outlook R6 setup, permissions and limits](docs/OUTLOOK_R6.md).
 
+## R7: optional TLS IMAP read-only pilot
+
+A third **server-configured, single-account IMAP reader** now uses the universal mailbox gateway. It requires private TLS IMAP configuration and a separate local unlock, with no browser mailbox passwords or PhiID linking. It is development-only and not a multi-user hosted service. See [R7 IMAP guide and safety limits](docs/IMAP_R7.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
