@@ -4,6 +4,7 @@
  * Tokens and Graph identifiers live in volatile server memory, never React.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createSessionSingleFlight } from './mail-gate.js';
 
 export const MICROSOFT_AUTHORIZE='https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize';
 export const MICROSOFT_TOKEN='https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
@@ -86,6 +87,7 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)&&
     secret.length>0&&secret.length<=4096;
   const pending=new Map(),sessions=new Map(),rotations=new Map(),limits=new Map();
+  const refreshSingleFlight=createSessionSingleFlight();
   function prune(){
     const now=Date.now();
     for(const [k,v] of pending)if(v.exp<=now)pending.delete(k);
@@ -107,19 +109,23 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
   async function accessToken(session){
     if(session.expires<=Date.now())throw invalid('Outlook session expired, please reconnect',401);
     if(session.accessExpires>Date.now()+30_000)return session.accessToken;
-    if(!session.refreshToken)throw invalid('Outlook token expired, please reconnect',401);
-    const data=await requestProvider(MICROSOFT_TOKEN,{
-      method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({
-        client_id:clientId,client_secret:secret,grant_type:'refresh_token',
-        refresh_token:session.refreshToken,scope:MICROSOFT_SCOPES,
-      })
-    },64_000);
-    const next=validateMicrosoftToken(data,{refresh:true});
-    session.accessToken=next.accessToken;
-    if(next.refreshToken)session.refreshToken=next.refreshToken;
-    session.accessExpires=Date.now()+next.expiresIn*1000;
-    return session.accessToken;
+    return refreshSingleFlight(session,async()=>{
+      if(session.expires<=Date.now())throw invalid('Outlook session expired, please reconnect',401);
+      if(session.accessExpires>Date.now()+30_000)return session.accessToken;
+      if(!session.refreshToken)throw invalid('Outlook token expired, please reconnect',401);
+      const data=await requestProvider(MICROSOFT_TOKEN,{
+        method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({
+          client_id:clientId,client_secret:secret,grant_type:'refresh_token',
+          refresh_token:session.refreshToken,scope:MICROSOFT_SCOPES,
+        })
+      },64_000);
+      const next=validateMicrosoftToken(data,{refresh:true});
+      session.accessToken=next.accessToken;
+      if(next.refreshToken)session.refreshToken=next.refreshToken;
+      session.accessExpires=Date.now()+next.expiresIn*1000;
+      return session.accessToken;
+    });
   }
   async function handle(req,res,path,url){
     if(path!=='/auth/microsoft/start'&&path!=='/auth/microsoft/callback')return false;

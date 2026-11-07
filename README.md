@@ -60,6 +60,10 @@ A third **server-configured, single-account IMAP reader** now uses the universal
 
 The local Mail providers pilot now shows which of the independently authorized Gmail, Outlook and IMAP sessions are **configured versus connected**, with per-provider status and an explicit **Disconnect all local sessions** control. Mailbox reads are revalidated after asynchronous operations so revoked sessions cannot publish stale mail data. This is not a real PhiID mailbox association, a cross-device logout or remote provider token revocation. See the [R8 account center contract and safety notes](docs/LOCAL_ACCOUNTS_R8.md).
 
+## R9: local provider-session safety gates
+
+The experimental mailbox bridge now preserves active request limits across rate-window rollovers, applies a process-wide concurrency ceiling, and shares one token refresh among concurrent reads of the **same** Gmail or Outlook session. It also rejects explicit cross-origin and cross-site sensitive mailbox reads. No encrypted token vault or hosted multi-user service has been introduced. See [R9 threat model and verification](docs/SESSION_SAFETY_R9.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
