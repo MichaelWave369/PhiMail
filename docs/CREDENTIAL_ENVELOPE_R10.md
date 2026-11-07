@@ -10,28 +10,28 @@ This rung delivers a strict, testable cryptography codec while deliberately leav
 
 ## Module
 
-\`server/credential-envelope.js\`
+`server/credential-envelope.js`
 
-- \`createCredentialEnvelopeCodec({keys,activeKeyId,now})\` requires a trusted \`Map\` of 32-byte keys (max 16 permitted). There is NO key material in GitHub, no hard-coded fallback, no password-based key derivation, and no automatic process.env input.
-- \`seal({binding,credential,revision,expiresAt})\` encrypts a narrowly validated OAuth credential or IMAP app credential using a random 32-byte salt, HKDF-SHA256 per-record key, fresh 12-byte nonce, and AES-256-GCM with a 16-byte tag.
-- \`open({binding,envelope,expectedRevision})\` rejects unknown key IDs, expiry, schema or metadata tampering, cross-account context changes, malformed ciphertext, invalid canonical encoding, and unexpected credential types. Provider tokens are never returned except to an explicitly calling trusted server module.
-- \`rewrap({binding,envelope,expectedRevision,nextRevision,expiresAt})\` allows future migration between trusted key IDs by decrypting an authorized record and re-encrypting under the active key with an INCREASED revision and fresh random salt/nonce.
-- \`destroy()\` wipes the codec's private key copies and prevents further seal/open/rewrap operations. It intentionally cannot wipe the input keys owned by the host, provider tokens already in memory, garbage-collected JS strings, or OS memory snapshots.
+- `createCredentialEnvelopeCodec({keys,activeKeyId,now})` requires a trusted `Map` of 32-byte keys (max 16 permitted). There is NO key material in GitHub, no hard-coded fallback, no password-based key derivation, and no automatic process.env input.
+- `seal({binding,credential,revision,expiresAt})` encrypts a narrowly validated OAuth credential or IMAP app credential using a random 32-byte salt, HKDF-SHA256 per-record key, fresh 12-byte nonce, and AES-256-GCM with a 16-byte tag.
+- `open({binding,envelope,expectedRevision})` rejects unknown key IDs, expiry, schema or metadata tampering, cross-account context changes, malformed ciphertext, invalid canonical encoding, and unexpected credential types. Provider tokens are never returned except to an explicitly calling trusted server module.
+- `rewrap({binding,envelope,expectedRevision,nextRevision,expiresAt})` allows future migration between trusted key IDs by decrypting an authorized record and re-encrypting under the active key with an INCREASED revision and fresh random salt/nonce.
+- `destroy()` wipes the codec's private key copies and prevents further seal/open/rewrap operations. It intentionally cannot wipe the input keys owned by the host, provider tokens already in memory, garbage-collected JS strings, or OS memory snapshots.
 
-The binary envelope has the version \`phimail.credential-envelope/v1\` and carries key ID, record revision, expiry, salt, IV, ciphertext, and authentication tag. It does NOT expose tokens, mailbox credentials, or identity values in its fields.
+The binary envelope has the version `phimail.credential-envelope/v1` and carries key ID, record revision, expiry, salt, IV, ciphertext, and authentication tag. It does NOT expose tokens, mailbox credentials, or identity values in its fields.
 
 ## Authenticated context (AAD)
 
 The trusted caller must provide the following binding for EACH record:
 
-\`\`\`text
+```text
 owner.issuer       = verified PhiID issuer, NOT an untrusted browser string
 owner.subject      = verified local identity subject, NOT a localStorage profile
 mailbox.provider   = gmail | outlook | imap
 mailbox.accountId  = provider-verified stable account ID, NOT a user-typed email
 revision           = externally authoritative record version (integer >= 1)
 expiresAt          = server-enforced envelope expiry
-\`\`\`
+```
 
 All values are authenticated as AES-GCM Additional Authenticated Data. The codec **validates their shape but does not verify their truth**, issue mailbox permissions, record consent, check identity sessions or construct a durable storage record. The planned integration service MUST verify owner identity separately, verify the provider account through independently authorized provider APIs, secure explicit grants and recheck authorization before decrypting or using any secret.
 
@@ -41,11 +41,11 @@ All values are authenticated as AES-GCM Additional Authenticated Data. The codec
 
 An old GCM-authenticated envelope can still decrypt with the old revision if the caller supplies that old revision. To stop replay, a future transactional record store must preserve the **latest committed revision independently and authoritatively**, bind every write to it using compare-and-swap, and reject older revisions. A browser-owned or same-record untrusted "current revision" does NOT satisfy this requirement.
 
-R10's open function requires the caller's \`expectedRevision\` and validates it against the envelope's authenticated revision. This is a useful prerequisite, not complete rollback protection.
+R10's open function requires the caller's `expectedRevision` and validates it against the envelope's authenticated revision. This is a useful prerequisite, not complete rollback protection.
 
 ## Key custody and rotation limitations
 
-No persistent key loader or Key Management Service is built yet. A host supplying \`keys\` must protect the keys independently; the codec internally copies them and derives per-record keys using HKDF. Future production hosting must use a vetted KMS/HSM, well-scoped tenant keys, rotation/retirement policy, audit events, recovery/backup controls, and emergency revocation. Client-selected key IDs are prohibited.
+No persistent key loader or Key Management Service is built yet. A host supplying `keys` must protect the keys independently; the codec internally copies them and derives per-record keys using HKDF. Future production hosting must use a vetted KMS/HSM, well-scoped tenant keys, rotation/retirement policy, audit events, recovery/backup controls, and emergency revocation. Client-selected key IDs are prohibited.
 
 A key rotation changes only the cryptographic wrapping. It does **not** revoke an OAuth access/refresh token at Google or Microsoft, reset an IMAP app password, or invalidate another process's previously decrypted copy.
 
@@ -58,9 +58,9 @@ A key rotation changes only the cryptographic wrapping. It does **not** revoke a
 
 ## Test coverage
 
-\`server/credential-envelope.test.js\` exercises encryption round-trips for mock OAuth and IMAP credentials, tamper rejection for every encrypted field, changed identity and mailbox AAD rejection, nonce uniqueness, expiry, strong key requirements, key rotation and rewrap, rollback mismatch, malformed input, oversized credentials, unknown fields, and destruction behavior.
+`server/credential-envelope.test.js` exercises encryption round-trips for mock OAuth and IMAP credentials, tamper rejection for every encrypted field, changed identity and mailbox AAD rejection, nonce uniqueness, expiry, strong key requirements, key rotation and rewrap, rollback mismatch, malformed input, oversized credentials, unknown fields, and destruction behavior.
 
-Run \`npm test\` and \`npm run build\`. Tests use synthetic secrets and random in-memory keys; none reach the filesystem or external providers. Security audit and live-provider smoke testing remain separate.
+Run `npm test` and `npm run build`. Tests use synthetic secrets and random in-memory keys; none reach the filesystem or external providers. Security audit and live-provider smoke testing remain separate.
 
 ## Next safe integration milestone
 
