@@ -9,8 +9,8 @@ async function getJSON(path, options) {
   return json;
 }
 
-export default function BridgePanel({ onClose }) {
-  const [provider,setProvider]=useState(()=>new URLSearchParams(window.location.search).has('outlook')?'outlook':'gmail');
+export default function BridgePanel({ onClose,initialProvider }) {
+  const [provider,setProvider]=useState(()=>initialProvider==='outlook'?'outlook':new URLSearchParams(window.location.search).has('outlook')?'outlook':'gmail');
   const [session, setSession] = useState(null);
   const [imapUnlock,setImapUnlock]=useState('');
   const [providers, setProviders] = useState(null);

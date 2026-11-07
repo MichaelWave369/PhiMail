@@ -15,6 +15,7 @@ import { createOutlookReadAdapter } from './providers/outlook.js';
 import { createMicrosoftLab } from './outlook-lab.js';
 import { createImapReadAdapter } from './providers/imap.js';
 import { createImapLab } from './imap-lab.js';
+import { createLocalMailboxConsent } from './local-mailbox-consent.js';
 import { createMailRequestGate,createSessionSingleFlight } from './mail-gate.js';
 import { localAccountSnapshot } from './local-accounts.js';
 
@@ -203,6 +204,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     imapAdapter
   ]});
   const mailboxReview=createMailboxReview({env,identityLab:phiidLab,gmailSessionFor:sessionFor});
+  const mailboxConsent=createLocalMailboxConsent({env,identityLab:phiidLab,microsoftLab});
   function providerName(url){
     const requested=url.searchParams.getAll('provider');
     if(requested.length>1|| !['gmail','outlook','imap'].includes(requested[0]||'gmail')){
@@ -252,6 +254,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     const url = new URL(req.url || '/', origin);
     const path = url.pathname;
     // Review runs first because the PhiID lab reserves /api/identity/*.
+    if (await mailboxConsent.handle(req,res,path,url)) return;
     if (await mailboxReview.handle(req,res,path,url)) return;
     if (await microsoftLab.handle(req,res,path,url)) return;
     if (await imapLab.handle(req,res,path,url)) return;

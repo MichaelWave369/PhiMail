@@ -37,7 +37,7 @@ export default function FieldConnections({onClose,onOpenGmail}) {
   return <div className="field-veil" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <section className="field-window" role="dialog" aria-modal="true" aria-labelledby="field-heading">
       <header className="field-head"><span className="field-brand"><Layers3 size={22}/></span><div><small>Φ ECOSYSTEM · R1</small><h2 id="field-heading">Field Connections</h2></div><span className="field-label">CONTRACT PREVIEW</span><button aria-label="Close Field Connections" onClick={onClose}><X size={20}/></button></header>
-      <div className="field-warning"><Info size={17}/><span>Read-only integration preview. <b>Nothing here signs in a user, connects a real account, confirms service health or grants permissions.</b></span></div>
+      <div className="field-warning"><Info size={17}/><span>Developer-only integration labs. <b>Pilot sessions are independent. R13 records only a temporary local consent grant; no durable account link, production mailbox authorization or PhiCloud service permission is created.</b></span></div>
       {import.meta.env.DEV&&<LocalPhiIdCard/>}
       {import.meta.env.DEV&&<MailboxReviewCard onOpenGmail={onOpenGmail}/>}
       <div className="field-columns">
