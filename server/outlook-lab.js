@@ -199,7 +199,7 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
       provider:'outlook',email:me.mail||me.userPrincipalName,
       accountId:me.id,accessToken:tokens.accessToken,refreshToken:tokens.refreshToken,
       accessExpires:now+tokens.expiresIn*1000,expires:now+SESSION_TTL,
-      rotation,messageRefs:new Map()
+      rotation,sessionMarker:randomId(),messageRefs:new Map()
     });
     rotations.set(rotation,sid);
     redirect(res,MICROSOFT_ORIGIN+'/?outlook=connected',[
@@ -218,6 +218,33 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
       sessions.delete(sid);
     }
   }
+  /**
+   * R12: independently re-check the Graph /me account behind the current
+   * server-held Microsoft OAuth session. This is a trusted backend method,
+   * NEVER an HTTP grant endpoint or an account-linking permission.
+   */
+  async function verifyAccount(req){
+    const session=sessionFor(req);
+    if(!session||session.provider!=='outlook'||
+       typeof session.accountId!=='string'||!session.accountId||
+       typeof session.sessionMarker!=='string'){
+      throw invalid('Microsoft mailbox session proof unavailable',401);
+    }
+    const token=await accessToken(session);
+    // Profile callback uses the existing fixed, bounded Microsoft Graph /me
+    // request rather than a browser-selected resource URL or email claim.
+    const me=await profile(token);
+    if(!me||typeof me.id!=='string'||me.id!==session.accountId||
+       sessionFor(req)!==session||session.expires<=Date.now()){
+      throw invalid('Microsoft mailbox account proof changed',401);
+    }
+    return Object.freeze({
+      provider:'outlook',
+      accountId:'microsoft-consumers:'+me.id,
+      sessionKey:session.sessionMarker,
+      expiresAt:session.expires
+    });
+  }
   function logout(req,res){
     if(!enabled||!local(req)){reply(res,403,{error:'local_outlook_session_only'});return;}
     if(req.headers.origin!==MICROSOFT_ORIGIN||
@@ -231,5 +258,5 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
       cookie('pm_ms_rotation','',0,'/auth/microsoft')
     ]);
   }
-  return {configured,handle,sessionFor,accessToken,logout,revoke};
+  return {configured,handle,sessionFor,accessToken,verifyAccount,logout,revoke};
 }
