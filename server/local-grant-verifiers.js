@@ -45,7 +45,11 @@ export function createLocalGrantVerifiers({
   async function verifyIdentity(request){
     if(!enabled||identityLab.enabled!==true||!isObject(request))deny();
     const current=now();
-    const session=identityLab.lookupSession(request);
+    // Invalid/malformed incoming evidence must fail with the same generic
+    // denial as a missing or revoked identity, never a raw parser exception.
+    let session;
+    try{session=identityLab.lookupSession(request);}
+    catch{deny();}
     const profile=session?.profile;
     if(profile?.authenticated!==true||profile.issuer!==DEV_ISSUER||
        !isObject(profile)||typeof profile.sub!=='string'||
