@@ -72,6 +72,10 @@ A standalone server-only AES-256-GCM credential-envelope codec now supports per-
 
 A standalone in-memory authorization state machine now requires **separately verified identity and mailbox sessions plus an explicit one-time approval challenge** to issue a narrow, expiring read-only grant. Every check re-verifies both sessions, and grants can be revoked by a verified owner. The three production-grade proof verifiers are intentionally not implemented or wired to live accounts, so this is **not** real account linking or authorization for the existing bridge. See [R11 grant contract, security boundaries and tests](docs/MAILBOX_GRANTS_R11.md).
 
+## R12: verified local identity and Outlook evidence (no grants)
+
+R12 adds local server-side adapters that resolve a verified PhiID development OIDC session and an independently authorized Microsoft personal-account session whose stable Graph /me user ID is rechecked. They can supply evidence to the R11 grant contract, but **the third required approval verifier always denies**. Gmail and IMAP owner linking fail closed until stable provider account IDs can be verified. Nothing is wired to live mailbox reads and no permanent links or credential persistence are created. See [R12 evidence contract and security boundaries](docs/VERIFIED_EVIDENCE_R12.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

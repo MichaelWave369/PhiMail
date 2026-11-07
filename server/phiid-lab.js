@@ -214,7 +214,9 @@ export function createPhiIdLab({env = process.env, provider = null} = {}) {
       const remaining=Math.min(SESSION_TTL,claims.exp*1000-Date.now());
       if(remaining<=0)return json(res,401,{error:'expired_local_identity'},[clear]),true;
       const sid=randomId();
-      sessions.set(sid,{profile,exp:Date.now()+remaining});
+      // R12: an internal, non-bearer marker for this exact verified OIDC
+      // session instance. Never serialize it as an HTTP identity claim.
+      sessions.set(sid,{profile,exp:Date.now()+remaining,sessionMarker:randomId()});
       return redirect(res,DEV_ORIGIN+'/?phiid=connected',[
         clear,cookie('pm_identity',sid,Math.max(1,Math.floor(remaining/1000)),'/api/identity')
       ]),true;

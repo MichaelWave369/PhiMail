@@ -95,3 +95,7 @@ A separate server-only [R10 credential-envelope module](CREDENTIAL_ENVELOPE_R10.
 ## R11 verification-gated owner-to-mailbox grant contract
 
 The separately testable [R11 authorization contract](MAILBOX_GRANTS_R11.md) defines one-time approval intents, owner+provider-session binding, read-only capabilities, expiry and owner revocation. It requires three independently trusted backend verifiers, which **have not yet been implemented**. The local provider bridge does not call this authority, and no owner-linking HTTP API, persistent record or new mailbox permission is introduced.
+
+## R12 local trusted identity + Graph account evidence
+
+The optional server-only [R12 verified evidence adapters](VERIFIED_EVIDENCE_R12.md) can retrieve currently validated PhiID OIDC identity evidence and independently re-verify a Microsoft Graph /me account behind a current local Outlook OAuth session. Gmail/IMAP owner linking remains intentionally denied. The R11 explicit approval verifier always fails closed and the module is **not connected to live bridge routes or persistent credentials**.
