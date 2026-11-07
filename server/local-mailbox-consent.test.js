@@ -211,7 +211,7 @@ describe('R13 explicit, temporary local Outlook consent',()=>{
     const {base}=await setup();
     const both=(await signInPhiID(base))+'; '+(await signInOutlook(base));
     const intent=await begin(base,both);
-    const bad={...acknowledgement(intent),challenge:'FORGED-CHALLENGE'};
+    const bad={...acknowledgement(intent),challenge:'A'.repeat(43)}; // well formed, wrong proof
     assert.equal((await action(base,'approve-mailbox-consent',both,bad)).status,403);
     assert.equal((await action(base,'approve-mailbox-consent',both,
       acknowledgement(intent))).status,403);
