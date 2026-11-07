@@ -44,6 +44,7 @@ export default function App(){
   const [draft,setDraft]=useState(BLANK);
   const [dialog,setDialog]=useState('');
   const [bridgeOpen,setBridgeOpen]=useState(()=>import.meta.env.DEV && (new URLSearchParams(window.location.search).has('phimail')||new URLSearchParams(window.location.search).has('outlook')));
+  const [bridgeInitialProvider,setBridgeInitialProvider]=useState(()=>new URLSearchParams(window.location.search).has('outlook')?'outlook':'gmail');
   const [fieldConnectionsOpen,setFieldConnectionsOpen]=useState(()=>import.meta.env.DEV && new URLSearchParams(window.location.search).has('phiid'));
   const [toast,setToast]=useState('');
   const [mobileMenu,setMobileMenu]=useState(false);
@@ -219,8 +220,10 @@ export default function App(){
       <button className="outline-button dialog-close" onClick={()=>setDialog('')}>Back to inbox</button>
     </section></div>}
 
-    {import.meta.env.DEV&&bridgeOpen&&<BridgePanel onClose={()=>setBridgeOpen(false)}/>}
-    {fieldConnectionsOpen&&<FieldConnections onClose={()=>setFieldConnectionsOpen(false)} onOpenGmail={()=>{setFieldConnectionsOpen(false);setBridgeOpen(true);}}/>}
+    {import.meta.env.DEV&&bridgeOpen&&<BridgePanel initialProvider={bridgeInitialProvider} onClose={()=>setBridgeOpen(false)}/>}
+    {fieldConnectionsOpen&&<FieldConnections onClose={()=>setFieldConnectionsOpen(false)}
+      onOpenGmail={()=>{setBridgeInitialProvider('gmail');setFieldConnectionsOpen(false);setBridgeOpen(true);}}
+      onOpenOutlook={()=>{setBridgeInitialProvider('outlook');setFieldConnectionsOpen(false);setBridgeOpen(true);}}/>}
     {toast&&<div className="toast" role="status"><Check size={17}/><span>{toast}</span><button onClick={()=>setToast('')} aria-label="Dismiss notice"><X size={15}/></button></div>}
   </div>;
 }

@@ -99,3 +99,7 @@ The separately testable [R11 authorization contract](MAILBOX_GRANTS_R11.md) defi
 ## R12 local trusted identity + Graph account evidence
 
 The optional server-only [R12 verified evidence adapters](VERIFIED_EVIDENCE_R12.md) can retrieve currently validated PhiID OIDC identity evidence and independently re-verify a Microsoft Graph /me account behind a current local Outlook OAuth session. Gmail/IMAP owner linking remains intentionally denied. The R11 explicit approval verifier always fails closed and the module is **not connected to live bridge routes or persistent credentials**.
+
+## R13 local explicit Outlook consent ceremony
+
+For exact loopback-only local development, [R13 consent routes](LOCAL_CONSENT_R13.md) now create a one-time R11 intent, require an explicit same-origin acknowledgment of the provider-verified Microsoft account and fixed read-only scopes, then record a short-lived in-memory grant that the verified PhiID owner can revoke. This is **not** a durable account link or additional live mailbox permission, does not persist credentials and does not revoke tokens remotely. A separate consent card is available in the local Field Connections UI.

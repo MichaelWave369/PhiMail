@@ -76,6 +76,10 @@ A standalone in-memory authorization state machine now requires **separately ver
 
 R12 adds local server-side adapters that resolve a verified PhiID development OIDC session and an independently authorized Microsoft personal-account session whose stable Graph /me user ID is rechecked. They can supply evidence to the R11 grant contract, but **the third required approval verifier always denies**. Gmail and IMAP owner linking fail closed until stable provider account IDs can be verified. Nothing is wired to live mailbox reads and no permanent links or credential persistence are created. See [R12 evidence contract and security boundaries](docs/VERIFIED_EVIDENCE_R12.md).
 
+## R13: explicit temporary Outlook approval ceremony (local only)
+
+Field Connections now offers a **two-step Outlook read-only consent lab**: independently verify PhiID and Microsoft Graph, review the exact provider account and scopes, explicitly approve once, and revoke temporary in-memory grants. The one-time approval intent expires within five minutes, and grants within fifteen minutes or the two sessions' earlier expiry. No new live mailbox permissions are granted, no persistent account association or token storage is added, and Gmail/IMAP owner linking remains unsupported. See [R13 walkthrough and security limits](docs/LOCAL_CONSENT_R13.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.
