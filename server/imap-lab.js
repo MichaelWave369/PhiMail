@@ -130,6 +130,11 @@ export function createImapLab({env=process.env,adapter}){
     });
     return true;
   }
+  // Only the containing bridge may call this after validating the bulk action.
+  function revoke(req){
+    const id=parseSessionCookie(req);
+    if(id)sessions.delete(id);
+  }
   function logout(req,res){
     if(!configured||!local(req)){reply(res,403,{error:'local_imap_only'});return;}
     if(req.headers.origin!==ORIGIN||
@@ -137,11 +142,10 @@ export function createImapLab({env=process.env,adapter}){
        req.headers['sec-fetch-site']==='cross-site'){
       reply(res,403,{error:'same_origin_imap_disconnect_required'});return;
     }
-    const id=parseSessionCookie(req);
-    if(id)sessions.delete(id);
+    revoke(req);
     reply(res,200,{connected:false,provider:'imap',server_credential_revoked:false},{
       'Set-Cookie':cookie('',0)
     });
   }
-  return Object.freeze({configured,sessionFor,handle,logout});
+  return Object.freeze({configured,sessionFor,handle,logout,revoke});
 }

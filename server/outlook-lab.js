@@ -202,6 +202,16 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
     ]);
     return true;
   }
+  // Pure server-side revocation for coordinated local disconnect.
+  // The public route still enforces its own Origin and action headers.
+  function revoke(req){
+    const sid=parseCookie(req,'pm_ms_session');
+    if(sid){
+      const old=sessions.get(sid);
+      if(old?.rotation)rotations.delete(old.rotation);
+      sessions.delete(sid);
+    }
+  }
   function logout(req,res){
     if(!enabled||!local(req)){reply(res,403,{error:'local_outlook_session_only'});return;}
     if(req.headers.origin!==MICROSOFT_ORIGIN||
@@ -209,16 +219,11 @@ export function createMicrosoftLab({env=process.env,requestProvider,profile}){
        req.headers['sec-fetch-site']==='cross-site'){
       reply(res,403,{error:'same_origin_outlook_disconnect_required'});return;
     }
-    const sid=parseCookie(req,'pm_ms_session');
-    if(sid){
-      const old=sessions.get(sid);
-      if(old?.rotation)rotations.delete(old.rotation);
-      sessions.delete(sid);
-    }
+    revoke(req);
     reply(res,200,{connected:false,provider:'outlook',remote_token_revoked:false},[
       cookie('pm_ms_session','',0,'/api'),
       cookie('pm_ms_rotation','',0,'/auth/microsoft')
     ]);
   }
-  return {configured,handle,sessionFor,accessToken,logout};
+  return {configured,handle,sessionFor,accessToken,logout,revoke};
 }
