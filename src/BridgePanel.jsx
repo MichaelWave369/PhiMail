@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, CircleAlert, ExternalLink, Inbox, LockKeyhole, Mail, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import './bridge.css';
 
@@ -22,25 +22,44 @@ export default function BridgePanel({ onClose }) {
   const [error, setError] = useState('');
   const [messageError, setMessageError] = useState('');
   const [reachedLimit, setReachedLimit] = useState(false);
+  const [accounts,setAccounts]=useState(null);
+  const [allBusy,setAllBusy]=useState(false);
+  const mailboxEpoch=useRef(0);
+  const messageEpoch=useRef(0);
+  const refreshAccounts=useCallback(async()=>{
+    const result=await getJSON('/api/accounts').catch(()=>null);
+    setAccounts(result);
+    return result;
+  },[]);
 
   const loadMailbox = useCallback(async () => {
+    const epoch=++mailboxEpoch.current;
+    ++messageEpoch.current;
     setBusy(true); setError(''); setSelected(null); setMessageBody(null);
     try {
       const data = await getJSON('/api/mail/messages?limit=15&provider='+provider);
+      if(epoch!==mailboxEpoch.current)return;
       setMessages(Array.isArray(data.messages) ? data.messages : []);
       setReachedLimit(Boolean(data.nextPageAvailable));
-    } catch (cause) { setError(cause.message); setMessages([]); }
-    finally { setBusy(false); }
+    } catch (cause) {
+      if(epoch===mailboxEpoch.current){setError(cause.message);setMessages([]);}
+    }finally{if(epoch===mailboxEpoch.current)setBusy(false);}
+
   }, [provider]);
 
   useEffect(() => {
     let cancelled = false;
     setSession(null);setMessages([]);setSelected(null);setMessageBody(null);setReachedLimit(false);
+    setBusy(false);setError('');
     (async () => {
       try {
-        const [status, available] = await Promise.all([getJSON('/api/session?provider='+provider), getJSON('/api/providers')]);
+        const [status, available, inventory] = await Promise.all([
+          getJSON('/api/session?provider='+provider),
+          getJSON('/api/providers'),
+          getJSON('/api/accounts').catch(()=>null)
+        ]);
         if (cancelled) return;
-        setSession(status); setProviders(available);
+        setSession(status); setProviders(available); setAccounts(inventory);
         if (status.connected) await loadMailbox();
       } catch {
         if (!cancelled) {
@@ -49,16 +68,20 @@ export default function BridgePanel({ onClose }) {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ++mailboxEpoch.current; ++messageEpoch.current; };
   }, [loadMailbox,provider]);
 
   async function openMessage(item) {
+    const epoch=++messageEpoch.current;
     setSelected(item); setMessageBody(null); setReading(true); setMessageError('');
     try {
-      const details = await getJSON('/api/mail/messages/' + encodeURIComponent(item.id)+'?provider='+provider);
-      setMessageBody(details);
-    } catch (cause) { setMessageError(cause.message); }
-    finally { setReading(false); }
+      const details=await getJSON('/api/mail/messages/'+encodeURIComponent(item.id)+'?provider='+provider);
+      if(epoch===messageEpoch.current)setMessageBody(details);
+    } catch(cause) {
+      if(epoch===messageEpoch.current)setMessageError(cause.message);
+    } finally {
+      if(epoch===messageEpoch.current)setReading(false);
+    }
   }
   async function connectImap(e){
     e.preventDefault();setBusy(true);setError('');
@@ -74,6 +97,7 @@ export default function BridgePanel({ onClose }) {
       const status=await getJSON('/api/session?provider=imap');
       setSession(status);
       await loadMailbox();
+      await refreshAccounts();
     }catch(cause){setError(cause.message);}
     finally{setBusy(false);}
   }
@@ -81,9 +105,25 @@ export default function BridgePanel({ onClose }) {
     setBusy(true); setError('');
     try {
       await getJSON('/api/session/disconnect?provider='+provider, { method:'POST',headers:{'Content-Type':'application/json',...(provider==='outlook'?{'X-PhiMail-Action':'disconnect-outlook'}:provider==='imap'?{'X-PhiMail-Action':'disconnect-imap'}:{})} });
+      ++mailboxEpoch.current;++messageEpoch.current;
       setSession({ connected: false }); setMessages([]); setSelected(null); setMessageBody(null);
+      await refreshAccounts();
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
+  }
+  async function disconnectAll(){
+    setAllBusy(true);setError('');
+    try{
+      const result=await getJSON('/api/accounts/disconnect-all',{
+        method:'POST',
+        headers:{'X-PhiMail-Action':'disconnect-all'}
+      });
+      ++mailboxEpoch.current;++messageEpoch.current;
+      setAccounts(result);
+      setSession({connected:false});setMessages([]);setSelected(null);setMessageBody(null);
+      setReachedLimit(false);setReading(false);setBusy(false);
+    }catch(cause){setError(cause.message);}
+    finally{setAllBusy(false);}
   }
 
   const providerReady = providers?.providers?.find(item=>item.id===provider)?.ready===true;
@@ -100,10 +140,25 @@ export default function BridgePanel({ onClose }) {
       </header>
       <div className="bridge-notice"><ShieldCheck size={19}/><p><b>Experimental read-only connector.</b> Provider tokens remain in the bridge's server memory. No live messages are saved in PhiMail browser storage, and sending, deleting or modifying real messages is not supported.</p></div>
       {providers?.providers&&<div className="bridge-provider-catalog" aria-label="Mail provider adapter availability">
-        {providers.providers.map(item=><button key={item.id} type="button" aria-pressed={provider===item.id} onClick={()=>setProvider(item.id)} className={'bridge-provider-item '+(item.ready?'is-ready ':'')+(provider===item.id?'is-selected':'')}>
-          <span>{item.name||item.id}</span>
-          <small>{item.ready?'Reader configured':item.id==='imap'?'Local setup needed':'Setup required'}</small>
-        </button>)}
+        {providers.providers.map(item=>{
+          const state=accounts?.accounts?.find(entry=>entry.provider===item.id);
+          return <button key={item.id} type="button" disabled={busy||allBusy}
+            aria-pressed={provider===item.id} onClick={()=>setProvider(item.id)}
+            className={'bridge-provider-item '+(item.ready?'is-ready ':'')+(provider===item.id?'is-selected':'')}>
+            <span>{item.name||item.id}</span>
+            <small>{state?.connected?'Connected · read-only':item.ready?'Configured · not connected':item.id==='imap'?'Local setup needed':'Setup required'}</small>
+            {state?.connected&&<span className="bridge-provider-email" title={state.email}>{state.email}</span>}
+          </button>;
+        })}
+      </div>}
+      {accounts?.accounts&&<div className="bridge-account-center" aria-label="Local mailbox session control">
+        <div>
+          <strong>{accounts.connected_count} of 3 local mailbox sessions active</strong>
+          <small>Independent providers. No PhiID link or cloud grant. Remote tokens and server credentials are not revoked here.</small>
+        </div>
+        <button type="button" onClick={disconnectAll} disabled={!accounts.connected_count||allBusy||busy}>
+          <LockKeyhole size={14}/> {allBusy?'Disconnecting…':'Disconnect all local sessions'}
+        </button>
       </div>}
 
       {session===null ? <div className="bridge-center"><RefreshCw className="bridge-spin" size={30}/><p>Checking bridge connection…</p></div>
@@ -147,7 +202,7 @@ export default function BridgePanel({ onClose }) {
             </aside>
             <article className="bridge-mail-reader">
               {!selected ? <div className="bridge-reader-empty"><Mail size={32}/><h3>Ready to read.</h3><p>Select an email from the {providerLabel} inbox on the left.</p></div>
-              : <><div className="bridge-reader-bar"><button className="bridge-icon-button bridge-reader-back" onClick={()=>setSelected(null)} aria-label="Back to Gmail inbox"><ArrowLeft size={18}/></button><span>{providerLabel.toUpperCase()} MESSAGE · READ ONLY</span></div>
+              : <><div className="bridge-reader-bar"><button className="bridge-icon-button bridge-reader-back" onClick={()=>setSelected(null)} aria-label="Back to mailbox inbox"><ArrowLeft size={18}/></button><span>{providerLabel.toUpperCase()} MESSAGE · READ ONLY</span></div>
                 <div className="bridge-reader-content"><h3>{selected.subject}</h3><p className="bridge-reader-from">{selected.from}</p><p className="bridge-reader-meta">{new Date(selected.date).toLocaleString()}</p><div className="bridge-message-content">{reading?'Loading full message…':messageBody?.body||'No plain-text message body was found.'}</div>{messageError&&<p className="bridge-error">{messageError}</p>}<div className="bridge-reader-security"><LockKeyhole size={16}/> Remote HTML, images and attachments are not rendered in the pilot.</div></div>
               </>}
             </article>

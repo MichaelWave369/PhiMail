@@ -79,3 +79,7 @@ PhiMail also supports an optional separate Microsoft personal-account OAuth + Gr
 ## R7 optional IMAP local read-only pilot
 
 The same provider gateway now accepts an opt-in, **single server-configured** TLS IMAP account. The browser supplies only a separate local unlock phrase; IMAP credentials remain in the server process's gitignored environment. Each read opens INBOX as read-only and verifies TLS. See [R7 IMAP configuration, security limits and test guide](IMAP_R7.md). This is not cloud hosting, automatic PhiID authorization or a public multi-user service.
+
+## R8 local account control
+
+The developer-only bridge now exposes a non-authorizing `/api/accounts` inventory and `POST /api/accounts/disconnect-all` action that clears the **current browser's** Gmail, Outlook and IMAP server sessions only. It does not sign out PhiID or revoke remote provider credentials. In-flight mailbox data is rechecked against the session after each read. See [R8 contract and tests](LOCAL_ACCOUNTS_R8.md). These routes require the exact `http://127.0.0.1:5173` loopback origin and remain disabled in production.

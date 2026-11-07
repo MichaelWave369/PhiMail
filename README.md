@@ -56,6 +56,10 @@ PhiMail now has an optional **Outlook personal-account reader** using independen
 
 A third **server-configured, single-account IMAP reader** now uses the universal mailbox gateway. It requires private TLS IMAP configuration and a separate local unlock, with no browser mailbox passwords or PhiID linking. It is development-only and not a multi-user hosted service. See [R7 IMAP guide and safety limits](docs/IMAP_R7.md).
 
+## R8: local account control center
+
+The local Mail providers pilot now shows which of the independently authorized Gmail, Outlook and IMAP sessions are **configured versus connected**, with per-provider status and an explicit **Disconnect all local sessions** control. Mailbox reads are revalidated after asynchronous operations so revoked sessions cannot publish stale mail data. This is not a real PhiID mailbox association, a cross-device logout or remote provider token revocation. See the [R8 account center contract and safety notes](docs/LOCAL_ACCOUNTS_R8.md).
+
 ## Roadmap
 
 - **Rung 1 | Client:** responsive, accessible demonstration and clearly labeled local actions.

@@ -15,6 +15,7 @@ import { createOutlookReadAdapter } from './providers/outlook.js';
 import { createMicrosoftLab } from './outlook-lab.js';
 import { createImapReadAdapter } from './providers/imap.js';
 import { createImapLab } from './imap-lab.js';
+import { localAccountSnapshot } from './local-accounts.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -192,6 +193,37 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
   function providerSession(req,provider){
     return provider==='outlook'?microsoftLab.sessionFor(req):provider==='imap'?imapLab.sessionFor(req):sessionFor(req);
   }
+  // R8 inventory and bulk actions exist ONLY on the exact local developer
+  // origin. Neither a PhiID login nor browser-chosen provider ID grants mail.
+  const accountsEnabled=env.NODE_ENV!=='production'&&
+    origin==='http://127.0.0.1:5173';
+  function localAccountsRequest(req){
+    const peer=req.socket?.remoteAddress;
+    return req.headers.host==='127.0.0.1:5173'&&
+      (peer==='127.0.0.1'||peer==='::ffff:127.0.0.1')&&
+      req.headers['sec-fetch-site']!=='cross-site'&&
+      (!req.headers.origin||req.headers.origin===origin);
+  }
+  function accountSnapshot(req){
+    return localAccountSnapshot(mailboxes.catalog(),
+      provider=>providerSession(req,provider));
+  }
+  function revokeGmail(req){
+    const sid=parseCookies(req.headers.cookie).pm_session;
+    if(!sid)return;
+    const existing=sessions.get(sid);
+    if(existing?.rotation)rotations.delete(existing.rotation);
+    sessions.delete(sid);
+  }
+  function clearAllAccountCookies(){
+    return [
+      cookie('pm_session','',0,'/api'),cookie('pm_session','',0,'/'),
+      cookie('pm_google','',0,'/auth/google'),
+      'pm_ms_session=; Path=/api; Max-Age=0; HttpOnly; SameSite=Lax',
+      'pm_ms_rotation=; Path=/auth/microsoft; Max-Age=0; HttpOnly; SameSite=Lax',
+      'pm_imap_session=; Path=/api; Max-Age=0; HttpOnly; SameSite=Lax'
+    ];
+  }
 
   async function handle(req, res) {
     cleanExpired();
@@ -204,6 +236,36 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
     if (await microsoftLab.handle(req,res,path,url)) return;
     if (await imapLab.handle(req,res,path,url)) return;
     if (await phiidLab.handle(req,res,path,url)) return;
+    if(path==='/api/accounts'){
+      if(!accountsEnabled)return json(res,503,{error:'local_account_center_disabled'});
+      if(!localAccountsRequest(req))return json(res,403,{error:'local_account_origin_required'});
+      if(url.search)return json(res,400,{error:'account_inventory_takes_no_query'});
+      if(req.method!=='GET')return json(res,405,{error:'method_not_allowed'});
+      return json(res,200,accountSnapshot(req));
+    }
+    if(path==='/api/accounts/disconnect-all'){
+      if(!accountsEnabled)return json(res,503,{error:'local_account_center_disabled'});
+      if(!localAccountsRequest(req))return json(res,403,{error:'local_account_origin_required'});
+      if(url.search)return json(res,400,{error:'unexpected_action_parameters'});
+      if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
+      if(req.headers.origin!==origin ||
+        req.headers['x-phimail-action']!=='disconnect-all'||
+        (req.headers['content-type']&&req.headers['content-type']!=='application/json')||
+        (req.headers['content-length']&&req.headers['content-length']!=='0')||
+        req.headers['transfer-encoding']){
+        return json(res,403,{error:'explicit_same_origin_disconnect_required'});
+      }
+      const disconnected=accountSnapshot(req).connected_count;
+      revokeGmail(req);
+      microsoftLab.revoke(req);
+      imapLab.revoke(req);
+      return json(res,200,{
+        ...accountSnapshot(req),
+        disconnected_local_sessions:disconnected,
+        remote_provider_tokens_revoked:false,
+        phiid_signed_out:false
+      },{'Set-Cookie':clearAllAccountCookies()});
+    }
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { service: 'phimail-bridge', mode: 'experimental', status: 'up' });
     if (req.method === 'GET' && path === '/api/providers') return json(res, 200, {
       mode: 'experimental-readonly', sameOriginRequired: true,
@@ -295,12 +357,7 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
       if(provider==='outlook')return microsoftLab.logout(req,res);
       if(provider==='imap')return imapLab.logout(req,res);
       if (!validateOrigin(req)) return json(res, 403, { error: 'Origin mismatch' });
-      const sid = parseCookies(req.headers.cookie).pm_session;
-      if (sid) {
-        const existing = sessions.get(sid);
-        if (existing?.rotation) rotations.delete(existing.rotation);
-        sessions.delete(sid);
-      }
+      revokeGmail(req);
       return json(res, 200, { connected: false }, {
         'Set-Cookie': [
           cookie('pm_session','',0,'/api'),cookie('pm_session','',0,'/'),
@@ -318,10 +375,16 @@ export function createBridge({ env = process.env, fetchImpl = fetch, identityPro
         if (path === '/api/mail/messages') {
           const requested=Number(url.searchParams.get('limit') || 15);
           const limit=Number.isInteger(requested)?Math.max(1,Math.min(requested,20)):15;
-          return json(res,200,await mailboxes.listInbox({session,limit}));
+          const result=await mailboxes.listInbox({session,limit});
+          if(providerSession(req,provider)!==session||session.expires<=Date.now())
+            return json(res,401,{error:'mailbox_session_revoked'});
+          return json(res,200,result);
         }
         const id=path.slice('/api/mail/messages/'.length);
-        return json(res,200,await mailboxes.readMessage({session,id}));
+        const result=await mailboxes.readMessage({session,id});
+        if(providerSession(req,provider)!==session||session.expires<=Date.now())
+          return json(res,401,{error:'mailbox_session_revoked'});
+        return json(res,200,result);
       });
     }
     return json(res, 404, { error: 'Not found' });
