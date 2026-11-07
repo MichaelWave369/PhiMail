@@ -75,3 +75,7 @@ The localhost bridge now validates one-time OAuth callback parameters, rotates t
 ## R6 Microsoft Outlook read-only pilot
 
 PhiMail also supports an optional separate Microsoft personal-account OAuth + Graph adapter in local development. This has a different browser cookie and server session from Gmail, requests only delegated User.Read and Mail.Read (plus offline_access) and never links to PhiID. Setup requires a Microsoft Entra app registration and private credentials; see [R6 Outlook guide](OUTLOOK_R6.md). No sending or public deployment is provided.
+
+## R7 optional IMAP local read-only pilot
+
+The same provider gateway now accepts an opt-in, **single server-configured** TLS IMAP account. The browser supplies only a separate local unlock phrase; IMAP credentials remain in the server process's gitignored environment. Each read opens INBOX as read-only and verifies TLS. See [R7 IMAP configuration, security limits and test guide](IMAP_R7.md). This is not cloud hosting, automatic PhiID authorization or a public multi-user service.

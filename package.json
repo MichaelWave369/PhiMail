@@ -14,7 +14,8 @@
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "openid-client": "6.8.8"
+    "openid-client": "6.8.8",
+    "imapflow": "2.10.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
